@@ -26,6 +26,12 @@ class SummaryInput(BaseModel):
     max_words: int = Field(default=100, description="Maximum words in summary")
 
 
+class ResponseSynopsisInput(BaseModel):
+    """Input for response synopsis generation tool."""
+    response_content: str = Field(description="AI response content to create intelligent synopsis for")
+    target_words: int = Field(default=45, description="Target word count for synopsis (35-45 words)")
+
+
 @tool("web_search", args_schema=WebSearchInput)
 def web_search_tool(query: str, max_results: int = 5) -> str:
     """
@@ -125,6 +131,63 @@ def content_summarizer_tool(content: str, max_words: int = 100) -> str:
         return f"Error summarizing content: {str(e)}"
 
 
+@tool("response_synopsis", args_schema=ResponseSynopsisInput)  
+def response_synopsis_tool(response_content: str, target_words: int = 45) -> str:
+    """
+    Generate an intelligent synopsis of an AI response. Creates a concise,
+    well-written summary that captures key insights and main points.
+    This tool extracts the most important information and creates a synopsis.
+    """
+    try:
+        # Extract key sentences and information
+        sentences = response_content.replace('\n', ' ').split('. ')
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+        
+        # Simple extraction approach - get the most informative sentences
+        if len(sentences) == 0:
+            return "No substantial content found for synopsis."
+        
+        # Take key sentences up to target word count
+        synopsis_parts = []
+        word_count = 0
+        
+        for sentence in sentences[:3]:  # Focus on first few key sentences
+            sentence = sentence.strip()
+            if not sentence.endswith('.') and not sentence.endswith('!') and not sentence.endswith('?'):
+                sentence += '.'
+            
+            sentence_words = len(sentence.split())
+            if word_count + sentence_words <= target_words:
+                synopsis_parts.append(sentence)
+                word_count += sentence_words
+            else:
+                # Add partial sentence to reach target
+                remaining_words = target_words - word_count
+                if remaining_words > 5:
+                    words = sentence.split()
+                    partial = ' '.join(words[:remaining_words-1]) + '...'
+                    synopsis_parts.append(partial)
+                break
+        
+        synopsis = ' '.join(synopsis_parts)
+        
+        # Fallback if synopsis is too short
+        if len(synopsis.split()) < 15:
+            # Create a more comprehensive summary
+            content_preview = response_content[:300]
+            words = content_preview.split()
+            if len(words) > target_words:
+                synopsis = ' '.join(words[:target_words-1]) + '...'
+            else:
+                synopsis = content_preview
+        
+        return synopsis
+        
+    except Exception as e:
+        logger.error(f"Error generating response synopsis: {str(e)}")
+        return f"Error generating synopsis: {str(e)}"
+
+
 @tool
 def django_model_query_tool(model_name: str, query_params: str) -> str:
     """
@@ -180,6 +243,7 @@ class ToolRegistry:
             'web_search': web_search_tool,
             'calculator': calculator_tool,
             'content_summarizer': content_summarizer_tool,
+            'response_synopsis': response_synopsis_tool,
             'django_query': django_model_query_tool,
             'datetime': datetime_tool,
         }

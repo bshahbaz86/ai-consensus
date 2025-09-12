@@ -20,29 +20,31 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 - 🤔 **Hard to compare responses** when they're on different platforms
 
 ### After: AI Consensus Solution
-- ⚡ **One query, three responses** - instantly compare Claude, GPT-4, and Gemini
-- 📊 **Side-by-side comparison** with intelligent summaries and full details
+- ⚡ **One query, multiple responses** - instantly compare Claude Sonnet 4, GPT-4o, and Gemini 1.5 Pro
+- 📊 **Side-by-side comparison** with AI-generated intelligent summaries and full details
 - 🎯 **Choose the best response** and continue the conversation seamlessly  
-- 🔧 **Advanced features** like LangChain agent orchestration and structured summaries
+- 🔧 **Advanced features** like LangChain agent orchestration with each AI using its own intelligence for summarization
 
 ## Demo
 
-**Sample Query**: "How will lower US interest rates affect USD to Euro conversion rate?"
+**Sample Query**: "What are the main advantages of renewable energy over fossil fuels?"
 
 ![AI Consensus Demo](ai-consensus-demo.png)
 
-*The app shows responses from Claude, OpenAI GPT-4, and Google Gemini side-by-side, with concise summaries and expandable details.*
+*The app shows responses from Claude Sonnet 4, OpenAI GPT-4o, and Google Gemini side-by-side, with AI-generated intelligent summaries and expandable details.*
 
 ## Key Features
 
 ### 🚀 Core Functionality
-- **Multi-AI Query**: Simultaneous responses from Claude, GPT-4, and Gemini
-- **Smart Summaries**: Concise overviews with expandable detailed responses
+- **Multi-AI Query**: Simultaneous responses from Claude Sonnet 4, GPT-4o, and Gemini 1.5 Pro
+- **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis using LangChain tool calling
 - **Response Selection**: Choose your preferred response and continue the conversation
 - **Conversation Continuity**: Seamless chat experience with selected responses
+- **Real-time Visual Feedback**: Blinking animation while AIs are thinking, hover tooltips showing exact model names
 
 ### 🧠 Advanced AI Features
-- **Pydantic-Based Intelligent Summaries**: Structured summarization using OpenAI function calling
+- **LangChain Tool-Based Summarization**: Each AI service uses its own intelligence to create intelligent summaries
+- **Pydantic-Based Structured Summaries**: Advanced structured summarization using OpenAI function calling
 - **LangChain Agent Orchestration**: Multi-tool agents with web search, calculator, and content summarizer
 - **Enhanced API Endpoints**: `/summary/structured/` and `/agent/execute/` for specialized tasks
 - **Flexible Agent Modes**: Standard chat, agent with tools, or structured summary mode
@@ -102,8 +104,8 @@ graph TB
 
 - **Backend**: Django 4.2, Django REST Framework
 - **Frontend**: React 18, TypeScript, Tailwind CSS
-- **AI Integration**: OpenAI API, Anthropic Claude API, Google Gemini API
-- **Advanced AI**: LangChain, Pydantic models for structured data
+- **AI Integration**: Claude Sonnet 4, OpenAI GPT-4o, Google Gemini 1.5 Pro
+- **Advanced AI**: LangChain tool calling, Pydantic models for structured data
 - **Database**: SQLite (development), PostgreSQL-ready
 - **Deployment**: Docker-ready configuration
 
@@ -114,9 +116,9 @@ graph TB
 - Python 3.9+
 - Node.js 18+
 - API Keys for:
-  - OpenAI API (GPT-4 access required)
-  - Anthropic Claude API
-  - Google Gemini API
+  - OpenAI API (GPT-4o access required)
+  - Anthropic Claude API (Sonnet 4 access required)
+  - Google Gemini API (Gemini 1.5 Pro access required)
 
 ### Backend Setup
 

@@ -109,12 +109,9 @@
         <button onclick="testAllServices()" class="test-button" id="testBtn">
             Test All AI Services
         </button>
-        <button onclick="testStructuredSummary()" class="test-button">
-            Test Structured Summary
-        </button>
-        <button onclick="testLangChainAgent()" class="test-button">
-            Test LangChain Agent
-        </button>
+        <p style="color: #666; font-style: italic; margin: 10px;">
+            Note: Structured Summary and LangChain Agent features require Redis and have been temporarily disabled.
+        </p>
     </div>
 
     <div class="question">
@@ -219,13 +216,7 @@
             document.getElementById('results').innerHTML = html;
         }
 
-        async function testStructuredSummary() {
-            alert('Structured Summary endpoint: /api/v1/ai-services/summary/structured/\\n\\nThis uses Pydantic models and OpenAI function calling for intelligent summarization!');
-        }
-
-        async function testLangChainAgent() {
-            alert('LangChain Agent endpoint: /api/v1/ai-services/agent/execute/\\n\\nThis uses LangChain orchestration with tools like calculator, web search, and content summarizer!');
-        }
+        // Structured Summary and LangChain Agent functions removed - require Redis
     </script>
 </body>
 </html>
