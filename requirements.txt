@@ -1,0 +1,48 @@
+# Django Framework
+Django==4.2.24
+djangorestframework==3.16.1
+
+# Database
+psycopg2-binary==2.9.9
+
+# Redis and Caching
+redis==6.4.0
+django-redis==5.4.0
+
+# Celery for background tasks
+celery==5.5.3
+
+# Django Channels for WebSockets
+channels==4.0.0
+channels-redis==4.2.0
+
+# CORS handling
+django-cors-headers==4.8.0
+
+# Environment variables
+python-decouple==3.8
+
+# Cryptography for API key encryption
+cryptography==45.0.7
+
+# HTTP requests for AI services
+requests==2.32.3
+aiohttp==3.9.1
+
+# Development dependencies
+django-extensions==3.2.3
+
+# Production server
+gunicorn==22.0.0
+
+# Pydantic for data validation and models
+pydantic==2.6.4
+
+# LangChain for AI orchestration and tool calling
+langchain==0.2.16
+langchain-openai==0.1.25
+langchain-core==0.2.39
+langchain-community==0.2.17
+
+# Additional AI utilities
+openai==1.58.0

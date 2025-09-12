@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: chatai_postgres
+    environment:
+      POSTGRES_DB: chatai_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - chatai_network
+
+  # Redis for caching and Celery broker
+  redis:
+    image: redis:7-alpine
+    container_name: chatai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chatai_network
+
+  # Django Web Application
+  web:
+    build: .
+    container_name: chatai_web
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - USE_SQLITE=False
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - chatai_network
+
+  # Celery Worker for background tasks
+  celery:
+    build: .
+    container_name: chatai_celery
+    command: celery -A config worker --loglevel=info
+    environment:
+      - DEBUG=True
+      - USE_SQLITE=False
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - chatai_network
+
+  # Celery Beat for periodic tasks
+  celery-beat:
+    build: .
+    container_name: chatai_celery_beat
+    command: celery -A config beat --loglevel=info
+    environment:
+      - DEBUG=True
+      - USE_SQLITE=False
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - chatai_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  chatai_network:
+    driver: bridge
