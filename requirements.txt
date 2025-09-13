@@ -38,11 +38,6 @@ gunicorn==22.0.0
 # Pydantic for data validation and models
 pydantic==2.6.4
 
-# LangChain for AI orchestration and tool calling
-langchain==0.2.16
-langchain-openai==0.1.25
-langchain-core==0.2.39
-langchain-community==0.2.17
 
 # Additional AI utilities
 openai==1.58.0

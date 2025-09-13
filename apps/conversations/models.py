@@ -12,7 +12,6 @@ class Conversation(models.Model):
     """
     AGENT_MODE_CHOICES = [
         ('standard', 'Standard Chat'),
-        ('agent', 'LangChain Agent with Tools'),
         ('structured', 'Structured Summary Mode'),
     ]
     
@@ -23,9 +22,8 @@ class Conversation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # Agent mode configuration
+    # Mode configuration
     agent_mode = models.CharField(max_length=20, choices=AGENT_MODE_CHOICES, default='standard')
-    enabled_tools = models.JSONField(default=list, help_text="List of enabled tool names for agent mode")
     
     # Conversation metadata
     total_messages = models.PositiveIntegerField(default=0)
@@ -51,35 +49,20 @@ class Conversation(models.Model):
             self.title = title
             self.save(update_fields=['title'])
     
-    def is_agent_enabled(self):
-        """Check if this conversation is using agent mode."""
-        return self.agent_mode == 'agent'
     
     def is_structured_mode(self):
         """Check if this conversation is using structured summary mode."""
         return self.agent_mode == 'structured'
     
-    def get_enabled_tools(self):
-        """Get list of enabled tool names."""
-        return self.enabled_tools or []
     
-    def enable_agent_mode(self, tools=None):
-        """Enable agent mode with specified tools."""
-        self.agent_mode = 'agent'
-        if tools:
-            self.enabled_tools = tools
-        elif not self.enabled_tools:
-            # Default tools
-            self.enabled_tools = ['web_search', 'calculator', 'content_summarizer', 'datetime']
-        self.save(update_fields=['agent_mode', 'enabled_tools'])
     
     def enable_structured_mode(self):
         """Enable structured summary mode."""
         self.agent_mode = 'structured'
         self.save(update_fields=['agent_mode'])
     
-    def disable_agent_mode(self):
-        """Disable agent mode and return to standard chat."""
+    def disable_structured_mode(self):
+        """Disable structured mode and return to standard chat."""
         self.agent_mode = 'standard'
         self.save(update_fields=['agent_mode'])
 
@@ -102,7 +85,7 @@ class Message(models.Model):
     # Message metadata
     timestamp = models.DateTimeField(auto_now_add=True)
     tokens_used = models.PositiveIntegerField(default=0)
-    metadata = models.JSONField(default=dict, help_text="Additional metadata like agent processing info, tools used, etc.")
+    metadata = models.JSONField(default=dict, help_text="Additional metadata like processing info, etc.")
     
     # For multi-AI responses, this links to the query that generated multiple responses
     query_session = models.UUIDField(null=True, blank=True)

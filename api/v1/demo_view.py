@@ -132,8 +132,8 @@ def demo_view(request):
         <button onclick="testStructuredSummary()" class="test-button">
             Show Structured Summary Info
         </button>
-        <button onclick="testLangChainAgent()" class="test-button">
-            Show LangChain Agent Info
+        <button onclick="testStructuredSummary()" class="test-button">
+            Show Structured Summary Info
         </button>
     </div>
 
@@ -145,9 +145,9 @@ def demo_view(request):
         <h3>✨ New Features Implemented:</h3>
         <ul>
             <li><strong>Pydantic-based Intelligent Summaries:</strong> Using OpenAI function calling with structured models</li>
-            <li><strong>LangChain Agent Orchestration:</strong> Multi-tool agents with web search, calculator, content summarizer</li>
-            <li><strong>Enhanced API Endpoints:</strong> Structured summary and agent execution endpoints</li>
-            <li><strong>Updated Models:</strong> Conversation model with agent_mode and enabled_tools fields</li>
+            <li><strong>Structured Summaries:</strong> Pydantic-based intelligent summarization with OpenAI function calling</li>
+            <li><strong>Enhanced API Endpoints:</strong> Structured summary endpoints for intelligent analysis</li>
+            <li><strong>Updated Models:</strong> Conversation model with structured mode support</li>
         </ul>
     </div>
 
@@ -270,25 +270,15 @@ Example:
 Response includes structured summary with confidence scores, follow-up questions, and related concepts!`);
         }
 
-        async function testLangChainAgent() {
-            alert(`🔧 LangChain Agent Orchestration
-
-Endpoint: POST /api/v1/ai-services/agent/execute/
+        async function testStructuredSummary() {
+            alert(`📝 Structured Summary Mode
 
 Features:
-• Based on your cbfs pattern with tools and memory
-• Available tools: web_search, calculator, content_summarizer, datetime
-• Conversation-based agent with /agent/conversation/<id>/
-• Django model integration with agent_mode field
+• Pydantic-based structured summaries using OpenAI function calling
+• Enhanced summarization with intelligent extraction
+• Django model integration with structured mode
 
-Example:
-{
-  "query": "Calculate 25% of 400 and search for current weather",
-  "tools": ["calculator", "web_search"],
-  "ai_service": "openai"
-}
-
-Maintains conversation memory and provides tool execution steps!`);
+Example endpoint: POST /api/v1/ai-services/summary/structured/`);
         }
     </script>
 </body>

@@ -14,40 +14,40 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 ## The Problem This App Solves
 
 ### Before: The AI Shopping Problem
-- 🔄 **Switching between platforms**: ChatGPT, Claude, Gemini separately  
+- 🔄 **Switching between platforms**: Multiple AI services separately  
 - ❓ **Uncertain which AI gives the best answer** for your question
 - ⏱️ **Time-consuming** to get multiple perspectives
 - 🤔 **Hard to compare responses** when they're on different platforms
 
 ### After: AI Consensus Solution
-- ⚡ **One query, multiple responses** - instantly compare Claude Sonnet 4, GPT-4o, and Gemini 1.5 Pro
+- ⚡ **One query, multiple responses** - instantly compare responses from leading AI models
 - 📊 **Side-by-side comparison** with AI-generated intelligent summaries and full details
 - 🎯 **Choose the best response** and continue the conversation seamlessly  
-- 🔧 **Advanced features** like LangChain agent orchestration with each AI using its own intelligence for summarization
+- 🔧 **Advanced features** like structured summarization with each AI using its own intelligence
 
 ## Demo
 
-**Sample Query**: "What are the main advantages of renewable energy over fossil fuels?"
+**Sample Query 1**: "What are the main advantages of renewable energy over fossil fuels?"
+**Sample Query 2**: "Which top three state-of-the-art LLMs are most frequently fine-tuned to support mission-critical business applications, with model weights either publicly accessible or available for licensing from leading frontier AI providers?"
 
 ![AI Consensus Demo](ai-consensus-demo.png)
 
-*The app shows responses from Claude Sonnet 4, OpenAI GPT-4o, and Google Gemini side-by-side, with AI-generated intelligent summaries and expandable details.*
+*The app shows responses from multiple leading AI models side-by-side, with AI-generated intelligent summaries and expandable details.*
 
 ## Key Features
 
 ### 🚀 Core Functionality
-- **Multi-AI Query**: Simultaneous responses from Claude Sonnet 4, GPT-4o, and Gemini 1.5 Pro
-- **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis using LangChain tool calling
+- **Multi-AI Query**: Simultaneous responses from multiple leading AI models
+- **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis
 - **Response Selection**: Choose your preferred response and continue the conversation
 - **Conversation Continuity**: Seamless chat experience with selected responses
-- **Real-time Visual Feedback**: Blinking animation while AIs are thinking, hover tooltips showing exact model names
+- **Real-time Visual Feedback**: Blinking animation while AIs are thinking, hover tooltips showing model information
 
 ### 🧠 Advanced AI Features
-- **LangChain Tool-Based Summarization**: Each AI service uses its own intelligence to create intelligent summaries
-- **Pydantic-Based Structured Summaries**: Advanced structured summarization using OpenAI function calling
-- **LangChain Agent Orchestration**: Multi-tool agents with web search, calculator, and content summarizer
-- **Enhanced API Endpoints**: `/summary/structured/` and `/agent/execute/` for specialized tasks
-- **Flexible Agent Modes**: Standard chat, agent with tools, or structured summary mode
+- **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis
+- **Pydantic-Based Structured Summaries**: Advanced structured summarization using function calling
+- **Enhanced API Endpoints**: `/summary/structured/` for specialized tasks
+- **Flexible Response Modes**: Standard chat or structured summary mode
 
 ### 🛠️ Technical Features
 - **Django REST API** backend with async AI service integration
@@ -64,16 +64,11 @@ graph TB
     F -->|HTTP Request| D[Django API]
     
     D -->|Parallel Requests| C[Claude API]
-    D -->|Parallel Requests| O[OpenAI GPT-4 API]
+    D -->|Parallel Requests| O[OpenAI API]
     D -->|Parallel Requests| G[Gemini API]
     
-    D -->|Advanced Features| LC[LangChain Agent]
-    LC -->|Tools| WS[Web Search]
-    LC -->|Tools| CALC[Calculator]  
-    LC -->|Tools| SUM[Content Summarizer]
-    
     D -->|Function Calling| PS[Pydantic Structured Summaries]
-    PS -->|OpenAI Functions| O
+    PS -->|Function Calling| O
     
     C -->|Response| D
     O -->|Response| D  
@@ -89,23 +84,16 @@ graph TB
     end
     
     subgraph "Advanced AI Features"
-        LC
         PS
-    end
-    
-    subgraph "LangChain Tools"
-        WS
-        CALC
-        SUM
     end
 ```
 
 ## Tech Stack
 
-- **Backend**: Django 4.2, Django REST Framework
-- **Frontend**: React 18, TypeScript, Tailwind CSS
-- **AI Integration**: Claude Sonnet 4, OpenAI GPT-4o, Google Gemini 1.5 Pro
-- **Advanced AI**: LangChain tool calling, Pydantic models for structured data
+- **Backend**: Django 4.2.24, Django REST Framework 3.16.1
+- **Frontend**: React 19, TypeScript, Tailwind CSS
+- **AI Integration**: Multiple leading AI models and services
+- **Advanced AI**: Pydantic 2.6.4, OpenAI 1.58.0
 - **Database**: SQLite (development), PostgreSQL-ready
 - **Deployment**: Docker-ready configuration
 
@@ -115,10 +103,11 @@ graph TB
 
 - Python 3.9+
 - Node.js 18+
+- Redis (optional - for advanced features like structured summaries)
 - API Keys for:
-  - OpenAI API (GPT-4o access required)
-  - Anthropic Claude API (Sonnet 4 access required)
-  - Google Gemini API (Gemini 1.5 Pro access required)
+  - OpenAI API
+  - Anthropic Claude API
+  - Google Gemini API
 
 ### Backend Setup
 
@@ -130,12 +119,13 @@ graph TB
 
 2. **Create virtual environment**
    ```bash
-   python -m venv venv
+   python3 -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
 3. **Install Python dependencies**
    ```bash
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
 
@@ -146,21 +136,26 @@ graph TB
    
    Edit `.env` with your API keys:
    ```env
+   # AI Service API Keys (get these from respective providers)
    OPENAI_API_KEY=sk-your-openai-key
    CLAUDE_API_KEY=sk-ant-your-claude-key  
    GEMINI_API_KEY=your-gemini-key
-   DJANGO_SECRET_KEY=your-secret-key
+   
+   # Django Configuration
+   SECRET_KEY=your-secret-key-here
    DEBUG=True
+   
+   # Other settings are optional for basic setup
    ```
 
-5. **Run database migrations**
+5. **Run database migrations (optional - only needed for user accounts and conversation history)**
    ```bash
-   python manage.py migrate
+   python3 manage.py migrate
    ```
 
 6. **Start Django server**
    ```bash
-   python manage.py runserver 8001
+   python3 manage.py runserver 8001
    ```
 
 ### Frontend Setup
@@ -186,6 +181,25 @@ graph TB
 - **Backend API**: http://localhost:8001
 - **Demo Page**: http://localhost:8001/api/v1/demo/
 
+### Troubleshooting
+
+**Common Issues:**
+
+1. **Python command not found**: Use `python3` instead of `python` on Mac/Linux
+2. **Port already in use**: Change the port number (e.g., `python3 manage.py runserver 8002`)
+3. **API keys not working**: Ensure API keys are correctly set in `.env` file
+4. **Frontend won't start**: 
+   - Make sure you're in `frontend/frontend` directory
+   - Run `npm install` again if needed
+   - Security warnings are normal for development
+
+**Required API Keys:**
+- **OpenAI**: Get from https://platform.openai.com/api-keys
+- **Claude**: Get from https://console.anthropic.com/
+- **Gemini**: Get from https://ai.google.dev/
+
+**Note**: The app will work with just one API key, but you'll get the best experience with all three.
+
 ## API Endpoints
 
 ### Core Endpoints
@@ -195,8 +209,6 @@ graph TB
 
 ### Advanced AI Endpoints  
 - `POST /api/v1/ai-services/summary/structured/` - Pydantic-based intelligent summaries
-- `POST /api/v1/ai-services/agent/execute/` - LangChain agent execution
-- `POST /api/v1/ai-services/agent/conversation/<id>/` - Agent conversation management
 
 ### Authentication
 - `POST /api/v1/auth/register/` - User registration
@@ -224,17 +236,6 @@ curl -X POST http://localhost:8001/api/v1/ai-services/summary/structured/ \
   }'
 ```
 
-### LangChain Agent
-```bash
-curl -X POST http://localhost:8001/api/v1/ai-services/agent/execute/ \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \  
-  -d '{
-    "query": "Calculate 25% of 400 and search for current weather",
-    "tools": ["calculator", "web_search"],
-    "ai_service": "openai"
-  }'
-```
 
 ## Development
 
@@ -273,8 +274,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- **OpenAI** for GPT-4 API
-- **Anthropic** for Claude API  
-- **Google** for Gemini API
-- **LangChain** for agent orchestration framework
+- **OpenAI** for GPT API access
+- **Anthropic** for Claude API access
+- **Google** for Gemini API access
 - **Django** and **React** communities for excellent frameworks

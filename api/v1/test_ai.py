@@ -5,8 +5,7 @@ from django.conf import settings
 import json
 import asyncio
 from apps.ai_services.services.factory import AIServiceFactory
-from core.langchain.service import ConversationAgentExecutor
-from core.langchain.tools import tool_registry
+# Removed langchain imports - agent functionality has been removed
 
 
 async def generate_synopsis_with_same_ai(content: str, ai_service_name: str, api_key: str, model: str) -> str:
