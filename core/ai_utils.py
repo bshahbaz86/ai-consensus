@@ -6,7 +6,8 @@ from pydantic import BaseModel
 def convert_pydantic_to_openai_function(model: Type[BaseModel]) -> Dict[str, Any]:
     """
     Convert a Pydantic model to OpenAI function calling schema.
-    Similar to convert_pydantic_to_openai_function from langchain.
+    NOTE: This is a legacy utility - structured outputs now use unified pydantic_ai_service
+    for consistent JSON schema across all providers (OpenAI, Claude, Gemini).
     """
     schema = model.model_json_schema()
     

@@ -144,8 +144,8 @@ def demo_view(request):
     <div class="implementation-note">
         <h3>✨ New Features Implemented:</h3>
         <ul>
-            <li><strong>Pydantic-based Intelligent Summaries:</strong> Using OpenAI function calling with structured models</li>
-            <li><strong>Structured Summaries:</strong> Pydantic-based intelligent summarization with OpenAI function calling</li>
+            <li><strong>Pydantic-based Intelligent Summaries:</strong> Using structured JSON outputs across all AI providers (OpenAI, Claude, Gemini)</li>
+            <li><strong>Structured Summaries:</strong> Unified Pydantic-based intelligent summarization for all AI services</li>
             <li><strong>Enhanced API Endpoints:</strong> Structured summary endpoints for intelligent analysis</li>
             <li><strong>Updated Models:</strong> Conversation model with structured mode support</li>
         </ul>
@@ -256,14 +256,14 @@ Endpoint: POST /api/v1/ai-services/summary/structured/
 
 Features:
 • Uses your proposed Overview BaseModel pattern
-• OpenAI function calling with convert_pydantic_to_openai_function()
+• Unified structured outputs across OpenAI, Claude, and Gemini
 • Rich metadata: complexity, tone, actionability, key points
 • Backward compatible with existing ResponseSummarizer
 
 Example:
 {
   "content": "Your text to summarize",
-  "ai_service": "openai", 
+  "ai_service": "openai" | "claude" | "gemini", 
   "use_enhanced": true
 }
 
@@ -274,7 +274,7 @@ Response includes structured summary with confidence scores, follow-up questions
             alert(`📝 Structured Summary Mode
 
 Features:
-• Pydantic-based structured summaries using OpenAI function calling
+• Pydantic-based structured summaries across all AI providers (OpenAI, Claude, Gemini)
 • Enhanced summarization with intelligent extraction
 • Django model integration with structured mode
 

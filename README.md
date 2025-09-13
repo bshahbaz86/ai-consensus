@@ -67,8 +67,10 @@ graph TB
     D -->|Parallel Requests| O[OpenAI API]
     D -->|Parallel Requests| G[Gemini API]
     
-    D -->|Function Calling| PS[Pydantic Structured Summaries]
-    PS -->|Function Calling| O
+    D -->|Structured JSON| PS[Pydantic Structured Summaries]
+    PS -->|JSON Schema| C
+    PS -->|JSON Schema| O
+    PS -->|JSON Schema| G
     
     C -->|Response| D
     O -->|Response| D  
@@ -208,8 +210,8 @@ graph TB
 - `POST /api/v1/conversations/` - Create conversation
 - `GET /api/v1/conversations/` - List conversations
 
-### Advanced AI Endpoints  
-- `POST /api/v1/ai-services/summary/structured/` - Pydantic-based intelligent summaries
+### Advanced AI Endpoints
+- `POST /api/v1/ai-services/summary/structured/` - Pydantic-based intelligent summaries (supports OpenAI, Claude, Gemini)
 
 ### Authentication
 - `POST /api/v1/auth/register/` - User registration
@@ -232,7 +234,7 @@ curl -X POST http://localhost:8001/api/v1/ai-services/summary/structured/ \
   -H "Authorization: Bearer <token>" \
   -d '{
     "content": "Your text to summarize",
-    "ai_service": "openai",
+    "ai_service": "openai", // or "claude" or "gemini"
     "use_enhanced": true
   }'
 ```
