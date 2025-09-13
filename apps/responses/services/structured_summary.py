@@ -10,8 +10,7 @@ from core.ai_models import (
     StructuredSummaryResult,
     KeyPoint
 )
-from apps.ai_services.services.factory import AIServiceFactory
-from apps.ai_services.services.openai_service import OpenAIService
+from apps.ai_services.services.pydantic_ai_service import pydantic_ai_service
 from .summarization import ResponseSummarizer
 
 logger = logging.getLogger(__name__)
@@ -19,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 class StructuredSummaryService:
     """
-    Service for generating intelligent, structured summaries using Pydantic models
-    and OpenAI function calling, as proposed in the user's request.
+    Service for generating intelligent, structured summaries using Pydantic AI.
+    Supports consistent structured outputs across OpenAI, Claude, and Gemini.
     """
     
     def __init__(self):
@@ -108,35 +107,33 @@ class StructuredSummaryService:
             )
     
     async def _generate_enhanced_summary(self, content: str, ai_service_name: str) -> EnhancedSummaryResponse:
-        """Generate enhanced summary using OpenAI function calling."""
-        ai_service = AIServiceFactory.get_service(ai_service_name)
-        
-        if not isinstance(ai_service, OpenAIService):
-            # Fallback to simple overview for non-OpenAI services
+        """Generate enhanced summary using Pydantic AI for all providers."""
+        # Check if provider is supported by Pydantic AI
+        if not pydantic_ai_service.supports_provider(ai_service_name):
+            logger.warning(f"Provider {ai_service_name} not supported by Pydantic AI, using fallback")
             return await self._generate_simple_overview_as_enhanced(content, ai_service_name)
         
-        prompt = self.summary_prompt_template.format(content=content[:4000])  # Limit content length
-        
-        # Use the pattern from user's request
-        response = await ai_service.generate_structured_response(
-            prompt=prompt,
-            response_model=EnhancedSummaryResponse
+        # Use unified Pydantic AI service for structured output
+        response = await pydantic_ai_service.generate_enhanced_summary(
+            provider=ai_service_name,
+            content=content,
+            summary_model=EnhancedSummaryResponse
         )
         
         if response.get('success') and response.get('structured_data'):
             return EnhancedSummaryResponse(**response['structured_data'])
         else:
+            logger.warning(f"Pydantic AI failed for {ai_service_name}: {response.get('error')}")
             # Fallback to manual creation
             return self._create_fallback_enhanced_summary(content, self.legacy_summarizer.generate_summary(content))
     
     async def _generate_simple_overview(self, content: str, ai_service_name: str) -> EnhancedSummaryResponse:
         """Generate simple overview and convert to enhanced format."""
-        ai_service = AIServiceFactory.get_service(ai_service_name)
-        
-        if isinstance(ai_service, OpenAIService):
+        if pydantic_ai_service.supports_provider(ai_service_name):
             prompt = f"Provide a concise 2-3 sentence summary of this content (avoid numbered lists or explanatory phrases):\n\n{content[:4000]}"
             
-            response = await ai_service.generate_structured_response(
+            response = await pydantic_ai_service.generate_structured_response(
+                provider=ai_service_name,
                 prompt=prompt,
                 response_model=Overview
             )
@@ -145,21 +142,26 @@ class StructuredSummaryService:
                 overview_data = response['structured_data']
                 return self._convert_overview_to_enhanced(overview_data, content)
         
-        # Fallback for other services or failures
+        # Fallback for unsupported providers or failures
         return await self._generate_simple_overview_as_enhanced(content, ai_service_name)
     
     async def _generate_simple_overview_as_enhanced(self, content: str, ai_service_name: str) -> EnhancedSummaryResponse:
-        """Generate overview using regular AI service and convert to enhanced format."""
-        ai_service = AIServiceFactory.get_service(ai_service_name)
-        
-        prompt = f"Provide a concise 2-3 sentence summary of this content (avoid numbered lists or explanatory phrases):\n\n{content[:4000]}"
-        context = {"max_tokens": 300, "temperature": 0.3}
-        
-        response = await ai_service.generate_response(prompt, context)
-        
-        if response.get('success'):
-            summary_text = response.get('content', '')
-            return self._convert_text_to_enhanced(summary_text, content)
+        """Generate overview using Pydantic AI and convert to enhanced format."""
+        try:
+            # Use Pydantic AI for simple overview generation
+            prompt = f"Provide a concise 2-3 sentence summary of this content (avoid numbered lists or explanatory phrases):\n\n{content[:4000]}"
+            
+            response = await pydantic_ai_service.generate_structured_response(
+                provider=ai_service_name,
+                prompt=prompt,
+                response_model=Overview
+            )
+            
+            if response.get('success') and response.get('structured_data'):
+                overview_data = response['structured_data']
+                return self._convert_overview_to_enhanced(overview_data, content)
+        except Exception as e:
+            logger.warning(f"Pydantic AI failed for {ai_service_name}: {str(e)}")
         
         # Final fallback
         legacy_data = self.legacy_summarizer.generate_summary(content)

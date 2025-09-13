@@ -45,7 +45,7 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 
 ### 🧠 Advanced AI Features
 - **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis
-- **Pydantic-Based Structured Summaries**: Advanced structured summarization using function calling
+- **Pydantic-Based Structured Summaries**: Advanced structured summarization across all AI providers (OpenAI, Claude, Gemini)
 - **Enhanced API Endpoints**: `/summary/structured/` for specialized tasks
 - **Flexible Response Modes**: Standard chat or structured summary mode
 
@@ -103,7 +103,7 @@ graph TB
 
 - Python 3.9+
 - Node.js 18+
-- Redis (optional - for advanced features like structured summaries)
+- Redis (optional - for production caching; app works without it)
 - API Keys for:
   - OpenAI API
   - Anthropic Claude API
@@ -192,6 +192,7 @@ graph TB
    - Make sure you're in `frontend/frontend` directory
    - Run `npm install` again if needed
    - Security warnings are normal for development
+5. **Redis connection errors**: App works without Redis - cache is configured to use dummy backend for development
 
 **Required API Keys:**
 - **OpenAI**: Get from https://platform.openai.com/api-keys

@@ -37,6 +37,7 @@ gunicorn==22.0.0
 
 # Pydantic for data validation and models
 pydantic==2.6.4
+# pydantic-ai removed due to compatibility issues - using manual implementation
 
 
 # Additional AI utilities

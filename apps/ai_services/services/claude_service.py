@@ -40,7 +40,7 @@ class ClaudeService(BaseAIService):
             payload = {
                 'model': self.model,
                 'max_tokens': prepared_context.get('max_tokens', self.max_tokens),
-                'temperature': prepared_context.get('temperature', 0.7),
+                'temperature': prepared_context.get('temperature', 0),
                 'messages': messages
             }
             

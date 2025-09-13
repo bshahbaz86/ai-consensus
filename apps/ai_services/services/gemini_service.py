@@ -43,7 +43,7 @@ class GeminiService(BaseAIService):
         try:
             prepared_context = self.prepare_context(context)
             max_tokens = prepared_context.get('max_tokens', self.max_tokens)
-            temperature = prepared_context.get('temperature', 0.7)
+            temperature = prepared_context.get('temperature', 0)
             url = f"{self.base_url}/{self.model}:generateContent"
             
             headers = {

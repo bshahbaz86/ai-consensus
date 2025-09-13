@@ -155,10 +155,17 @@ CACHES = {
         'LOCATION': REDIS_URL,
     }
 }
+# For development without Redis, use dummy cache:
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+#     }
+# }
 
 # Session Configuration
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+# SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+# SESSION_CACHE_ALIAS = 'default'
 
 # Celery Configuration
 CELERY_BROKER_URL = REDIS_URL
