@@ -45,13 +45,13 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 
 ### 🧠 Advanced AI Features
 - **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis
-- **Pydantic-Based Structured Summaries**: Advanced structured summarization across all AI providers (OpenAI, Claude, Gemini)
+- **Structured Summaries**: Advanced structured summarization across all AI providers
 - **Enhanced API Endpoints**: `/summary/structured/` for specialized tasks
 - **Flexible Response Modes**: Standard chat or structured summary mode
 
 ### 🛠️ Technical Features
-- **Django REST API** backend with async AI service integration
-- **React TypeScript** frontend with real-time updates
+- **REST API** backend with async AI service integration
+- **Modern web frontend** with real-time updates
 - **Modular AI Service Architecture** supporting easy addition of new AI providers
 - **Comprehensive Error Handling** with fallback mechanisms
 - **Authentication & Permissions** ready for multi-user deployment
@@ -90,26 +90,15 @@ graph TB
     end
 ```
 
-## Tech Stack
-
-- **Backend**: Django 4.2.24, Django REST Framework 3.16.1
-- **Frontend**: React 19, TypeScript, Tailwind CSS
-- **AI Integration**: Multiple leading AI models and services
-- **Advanced AI**: Pydantic 2.6.4, OpenAI 1.58.0
-- **Database**: SQLite (development), PostgreSQL-ready
-- **Deployment**: Docker-ready configuration
 
 ## Setup and Installation
 
 ### Prerequisites
 
-- Python 3.9+
-- Node.js 18+
-- Redis (optional - for production caching; app works without it)
-- API Keys for:
-  - OpenAI API
-  - Anthropic Claude API
-  - Google Gemini API
+- Modern Python environment
+- Current Node.js runtime
+- Optional caching service (for production; app works without it)
+- API Keys for supported AI services
 
 ### Backend Setup
 
@@ -125,7 +114,7 @@ graph TB
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Install Python dependencies**
+3. **Install dependencies**
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
@@ -155,7 +144,7 @@ graph TB
    python3 manage.py migrate
    ```
 
-6. **Start Django server**
+6. **Start backend server**
    ```bash
    python3 manage.py runserver 8001
    ```
@@ -167,12 +156,12 @@ graph TB
    cd frontend/frontend
    ```
 
-2. **Install Node.js dependencies**
+2. **Install dependencies**
    ```bash
    npm install
    ```
 
-3. **Start React development server**
+3. **Start frontend development server**
    ```bash
    npm start
    ```
@@ -211,7 +200,7 @@ graph TB
 - `GET /api/v1/conversations/` - List conversations
 
 ### Advanced AI Endpoints
-- `POST /api/v1/ai-services/summary/structured/` - Pydantic-based intelligent summaries (supports OpenAI, Claude, Gemini)
+- `POST /api/v1/ai-services/summary/structured/` - Structured intelligent summaries
 
 ### Authentication
 - `POST /api/v1/auth/register/` - User registration
@@ -254,11 +243,11 @@ npm test
 
 ### Code Quality
 ```bash
-# Python linting
+# Backend linting
 flake8 .
 black .
 
-# TypeScript checking
+# Frontend type checking
 cd frontend/frontend
 npm run type-check
 ```
@@ -277,7 +266,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- **OpenAI** for GPT API access
-- **Anthropic** for Claude API access
-- **Google** for Gemini API access
-- **Django** and **React** communities for excellent frameworks
+- **OpenAI** for API access
+- **Anthropic** for API access
+- **Google** for API access
+- Open source communities for excellent frameworks and tools

@@ -164,7 +164,7 @@ def test_ai_services(request):
                 gemini_service = AIServiceFactory.create_service(
                     'gemini',
                     settings.GEMINI_API_KEY,
-                    model='gemini-1.5-pro'
+                    model='gemini-1.5-flash'
                 )
                 
                 # Run async function
@@ -183,7 +183,7 @@ def test_ai_services(request):
                                 gemini_response['content'],
                                 'gemini',
                                 settings.GEMINI_API_KEY,
-                                'gemini-1.5-pro'
+                                'gemini-1.5-flash'
                             )
                         )
                     

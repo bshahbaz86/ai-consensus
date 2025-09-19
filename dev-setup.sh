@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Development setup script for ChatAI
+# Development setup script for AI Consensus
 
-echo "🚀 Setting up ChatAI development environment..."
+echo "🚀 Setting up AI Consensus development environment..."
 
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then

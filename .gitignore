@@ -287,3 +287,13 @@ docs/_build/
 # Temporary test files
 test_*.tmp
 *.test.tmp
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+playwright.config.ts
+tests/
+tests-examples/
+.playwright-mcp/
