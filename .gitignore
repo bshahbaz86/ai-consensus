@@ -297,3 +297,6 @@ playwright.config.ts
 tests/
 tests-examples/
 .playwright-mcp/
+
+# UX Design Documentation
+UX_DESIGN_RECOMMENDATIONS.md

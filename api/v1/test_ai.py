@@ -222,3 +222,120 @@ def test_ai_services(request):
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def critique_compare(request):
+    """
+    Compare two LLM responses using AI critique framework.
+    """
+    try:
+        data = json.loads(request.body)
+        user_query = data.get('user_query', '')
+        llm1_name = data.get('llm1_name', '')
+        llm1_response = data.get('llm1_response', '')
+        llm2_name = data.get('llm2_name', '')
+        llm2_response = data.get('llm2_response', '')
+        chat_history = data.get('chat_history', '')
+
+        if not all([user_query, llm1_name, llm1_response, llm2_name, llm2_response]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+
+        # Create the critique prompt using the framework you provided
+        critique_prompt = f"""You are tasked with conducting a thorough, objective analysis comparing two LLM responses to the same user query. Your goal is to evaluate both responses fairly across multiple dimensions and provide actionable insights for improvement.
+
+Original User Query along with chat history: {user_query}
+
+Chat History: {chat_history}
+
+{llm1_name}'s Response: {llm1_response}
+
+{llm2_name}'s Response: {llm2_response}
+
+Please provide your analysis in the following structured format:
+
+## Executive Summary
+A brief 2-3 sentence overview of which response better serves the user's needs and why.
+
+## Overall Assessment
+Rate each response (1-10) with brief justification:
+{llm1_name}: [Score] - [Reasoning]
+{llm2_name}: [Score] - [Reasoning]
+
+## Detailed Comparison
+
+### Content Analysis
+Compare accuracy, completeness, and relevance. Note any factual discrepancies or gaps. Evaluate depth vs. breadth trade-offs.
+
+### Style & Communication
+Assess clarity, tone, and accessibility. Compare use of examples and explanations. Evaluate formatting and organization.
+
+### Technical Execution
+Review adherence to specific requirements. Assess any code, formatting, or structural elements. Note handling of edge cases or constraints.
+
+### User-Centric Evaluation
+Which response better addresses the user's underlying need? Which provides more actionable value? Which anticipates logical follow-up questions?
+
+## Strengths & Weaknesses Matrix
+
+### {llm1_name}'s Response
+**Strengths:** [List 2-3 key advantages]
+**Weaknesses:** [List 2-3 areas for improvement]
+
+### {llm2_name}'s Response
+**Strengths:** [List 2-3 key advantages]
+**Weaknesses:** [List 2-3 areas for improvement]
+
+## Synthesis & Recommendations
+
+### For {llm1_name}'s Future Responses:
+Specific improvements based on {llm2_name}'s strengths. Approaches to maintain current advantages. Suggestions for better handling similar queries.
+
+### Ideal Response Characteristics:
+What would a superior response combine from both? What novel approaches could surpass both responses?
+
+Focus on helping improve future responses while maintaining objectivity in your evaluation."""
+
+        # Use Claude for the critique (as it's typically most analytical)
+        if settings.CLAUDE_API_KEY:
+            claude_service = AIServiceFactory.create_service(
+                'claude',
+                settings.CLAUDE_API_KEY,
+                model='claude-sonnet-4-20250514'
+            )
+
+            # Run async function
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                critique_response = loop.run_until_complete(
+                    claude_service.generate_response(critique_prompt)
+                )
+            finally:
+                loop.close()
+
+            if critique_response['success']:
+                return JsonResponse({
+                    'success': True,
+                    'critique': critique_response['content']
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': f"Critique generation failed: {critique_response.get('error', 'Unknown error')}"
+                }, status=500)
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Claude API key not configured for critique functionality'
+            }, status=500)
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)

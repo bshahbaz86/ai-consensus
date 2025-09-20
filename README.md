@@ -27,12 +27,22 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 
 ## Demo
 
-**Sample Query 1**: "What are the main advantages of renewable energy over fossil fuels?"
-**Sample Query 2**: "Which top three state-of-the-art LLMs are most frequently fine-tuned to support mission-critical business applications, with model weights either publicly accessible or available for licensing from leading frontier AI providers?"
+**Sample Query**: "Which top three state-of-the-art LLMs are most frequently fine-tuned to support mission-critical business applications, with model weights either publicly accessible or available for licensing from leading frontier AI providers?"
 
-![AI Consensus Demo](ai-consensus-demo.png)
+### Clean Interface with Consistent Action Buttons
+![AI Consensus Interface](ai-consensus-improved-interface.png)
 
-*The app shows responses from multiple leading AI models side-by-side, with AI-generated intelligent summaries and expandable details.*
+*Clean, modern interface with consistent action buttons: Expand/Collapse, Select for AI Critic, and Preferred This*
+
+### Detailed Response View
+![AI Consensus Expanded Response](ai-consensus-expanded-response.png)
+
+*Expandable responses with full AI-generated content, structured markdown rendering, and action buttons*
+
+### AI Critique & Comparison Feature
+![AI Consensus Critique Ready](ai-consensus-critique-ready.png)
+
+*Select multiple responses to get AI-powered comparative analysis and critique*
 
 ## Key Features
 
@@ -45,9 +55,16 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 
 ### 🧠 Advanced AI Features
 - **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis
+- **AI Critique & Comparison**: Select any two responses for detailed AI-powered comparative analysis
 - **Structured Summaries**: Advanced structured summarization across all AI providers
-- **Enhanced API Endpoints**: `/summary/structured/` for specialized tasks
+- **Enhanced API Endpoints**: `/summary/structured/` and `/critique/compare/` for specialized tasks
 - **Flexible Response Modes**: Standard chat or structured summary mode
+
+### 🎨 UI/UX Improvements
+- **Consistent Action Buttons**: Uniform styling across Expand/Collapse, Select for AI Critic, and Preferred This buttons
+- **Intelligent Response Selection**: "Preferred This" removes all other responses including AI Critic for clean continuation
+- **No Auto-Expansion**: Select for AI Critic doesn't automatically expand responses, giving users full control
+- **Professional Button Design**: Consistent height, padding, and visual weight across all interactive elements
 
 ### 🛠️ Technical Features
 - **REST API** backend with async AI service integration
@@ -201,6 +218,7 @@ graph TB
 
 ### Advanced AI Endpoints
 - `POST /api/v1/ai-services/summary/structured/` - Structured intelligent summaries
+- `POST /api/v1/critique/compare/` - AI-powered response comparison and critique
 
 ### Authentication
 - `POST /api/v1/auth/register/` - User registration
@@ -225,6 +243,20 @@ curl -X POST http://localhost:8001/api/v1/ai-services/summary/structured/ \
     "content": "Your text to summarize",
     "ai_service": "openai", // or "claude" or "gemini"
     "use_enhanced": true
+  }'
+```
+
+### AI Critique & Comparison
+```bash
+curl -X POST http://localhost:8001/api/v1/critique/compare/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_query": "Your original question",
+    "llm1_name": "Claude",
+    "llm1_response": "First AI response to compare",
+    "llm2_name": "Gemini",
+    "llm2_response": "Second AI response to compare",
+    "chat_history": "Previous conversation context"
   }'
 ```
 
