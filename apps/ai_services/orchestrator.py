@@ -6,6 +6,7 @@ import logging
 
 from .models import AIService, AIQuery, AIServiceTask
 from .tasks import process_ai_query
+from .services.web_search_coordinator import WebSearchCoordinator
 from apps.conversations.models import Conversation, Message
 
 User = get_user_model()
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 class MultiAgentOrchestrator:
     def __init__(self):
         self.active_services = AIService.objects.filter(is_active=True)
+        self.web_search_coordinator = WebSearchCoordinator()
     
     async def process_user_query(
         self,
@@ -36,7 +38,8 @@ class MultiAgentOrchestrator:
                     message_type='user'
                 )
                 
-                query_context = self._prepare_query_context(conversation, context)
+                # Perform web search if enabled
+                query_context = await self._prepare_query_context(conversation, context, prompt, user)
                 
                 ai_query = AIQuery.objects.create(
                     user=user,
@@ -93,7 +96,13 @@ class MultiAgentOrchestrator:
         )
         return conversation
     
-    def _prepare_query_context(self, conversation: Conversation, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _prepare_query_context(
+        self, 
+        conversation: Conversation, 
+        context: Optional[Dict[str, Any]], 
+        prompt: str, 
+        user: User
+    ) -> Dict[str, Any]:
         conversation_history = []
         
         recent_messages = conversation.messages.order_by('-created_at')[:10]
@@ -116,6 +125,49 @@ class MultiAgentOrchestrator:
         
         if context:
             query_context.update(context)
+        
+        # Perform web search if enabled
+        if context and context.get('web_search', {}).get('enabled', False):
+            logger.info(f"Web search enabled for query: {prompt[:50]}...")
+            try:
+                search_result = await self.web_search_coordinator.search_for_query(
+                    user_query=prompt,
+                    user=user,
+                    context=context
+                )
+                
+                if search_result['success']:
+                    query_context['web_search'] = {
+                        'enabled': True,
+                        'results': search_result['results'],
+                        'sources': search_result['sources'],
+                        'search_calls_made': search_result['search_calls_made'],
+                        'recency_focused': search_result.get('recency_focused', False),
+                        'has_recent_content': search_result.get('has_recent_content', False),
+                        'timestamp': search_result['timestamp']
+                    }
+                    
+                    # Add external knowledge section for AI providers
+                    query_context['external_knowledge'] = self._format_search_for_ai(search_result)
+                    
+                    logger.info(f"Web search completed: {len(search_result['results'])} results, {search_result['search_calls_made']} API calls")
+                else:
+                    query_context['web_search'] = {
+                        'enabled': True,
+                        'error': search_result.get('error', 'Search failed'),
+                        'results': [],
+                        'sources': []
+                    }
+                    logger.warning(f"Web search failed: {search_result.get('error')}")
+                    
+            except Exception as e:
+                logger.error(f"Web search error: {str(e)}")
+                query_context['web_search'] = {
+                    'enabled': True,
+                    'error': f'Search service unavailable: {str(e)}',
+                    'results': [],
+                    'sources': []
+                }
         
         return query_context
     
@@ -191,3 +243,45 @@ class MultiAgentOrchestrator:
                 'error': str(e),
                 'query_id': query_id
             }
+    
+    def _format_search_for_ai(self, search_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Format web search results for AI provider consumption.
+        """
+        if not search_result.get('success') or not search_result.get('results'):
+            return {
+                'type': 'web_search',
+                'status': 'no_results',
+                'message': 'No web search results available'
+            }
+        
+        # Create structured prompt context
+        search_summary = []
+        search_summary.append(f"Web Search Results for: {search_result.get('query', 'Unknown query')}")
+        search_summary.append(f"Found {len(search_result['results'])} relevant sources")
+        
+        if search_result.get('recency_focused'):
+            search_summary.append("Search focused on recent/current information")
+        
+        search_summary.append("\n--- Search Results ---")
+        
+        for i, result in enumerate(search_result['results'][:6], 1):  # Limit to top 6
+            search_summary.append(f"\n{i}. {result.get('title', 'No title')}")
+            search_summary.append(f"   Source: {result.get('source', 'Unknown source')}")
+            if result.get('published_date'):
+                search_summary.append(f"   Published: {result['published_date']}")
+            search_summary.append(f"   Content: {result.get('snippet', 'No content preview')}")
+            if result.get('relevance_note'):
+                search_summary.append(f"   Relevance: {result['relevance_note']}")
+        
+        search_summary.append("\n--- End Search Results ---")
+        search_summary.append("\nPlease use this current web information to enhance your response.")
+        
+        return {
+            'type': 'web_search',
+            'status': 'success',
+            'formatted_content': '\n'.join(search_summary),
+            'results_count': len(search_result['results']),
+            'search_calls_made': search_result.get('search_calls_made', 0),
+            'sources': search_result.get('sources', [])
+        }

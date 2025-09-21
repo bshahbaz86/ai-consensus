@@ -77,9 +77,42 @@ class ClaudeService(BaseAIService):
                 'content': msg.get('content', '')
             })
         
+        # Enhance prompt with web search results if available
+        enhanced_prompt = self._enhance_prompt_with_web_search(prompt, context)
+        
         messages.append({
             'role': 'user',
-            'content': prompt
+            'content': enhanced_prompt
         })
         
         return messages
+    
+    def _enhance_prompt_with_web_search(self, prompt: str, context: Dict[str, Any]) -> str:
+        """
+        Enhance the user prompt with web search results if available.
+        """
+        if not context.get('has_web_search', False):
+            return prompt
+        
+        external_knowledge = context.get('external_knowledge', {})
+        if external_knowledge.get('status') != 'success':
+            return prompt
+        
+        # Build enhanced prompt with search context
+        enhanced_parts = []
+        
+        # Add web search context
+        search_content = external_knowledge.get('formatted_content', '')
+        if search_content:
+            enhanced_parts.append("Current web information:")
+            enhanced_parts.append(search_content)
+            enhanced_parts.append("\n" + "="*50 + "\n")
+        
+        # Add original user query
+        enhanced_parts.append("User question:")
+        enhanced_parts.append(prompt)
+        
+        # Add instruction for using web data
+        enhanced_parts.append("\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results.")
+        
+        return "\n\n".join(enhanced_parts)

@@ -5,6 +5,7 @@ from django.conf import settings
 import json
 import asyncio
 from apps.ai_services.services.factory import AIServiceFactory
+from apps.ai_services.services.web_search_coordinator import WebSearchCoordinator
 # Removed langchain imports - agent functionality has been removed
 
 
@@ -53,12 +54,60 @@ def test_ai_services(request):
     """
     Simple test endpoint to verify real AI API integration
     POST /api/v1/test-ai/
-    Body: {"message": "test question", "services": ["claude", "openai"]}
+    Body: {"message": "test question", "services": ["claude", "openai"], "use_web_search": true}
     """
     try:
         data = json.loads(request.body)
         message = data.get('message', 'Hello, how are you?')
         services = data.get('services', ['claude', 'openai', 'gemini'])
+        use_web_search = data.get('use_web_search', False)
+        
+        # Handle web search if enabled
+        web_search_context = None
+        web_search_sources = []
+        
+        if use_web_search:
+            try:
+                search_coordinator = WebSearchCoordinator()
+                
+                # Run web search async
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    search_result = loop.run_until_complete(
+                        search_coordinator.search_for_query(
+                            user_query=message,
+                            user=None,  # No user for test endpoint
+                            context={}
+                        )
+                    )
+                    
+                    if search_result['success']:
+                        web_search_sources = search_result.get('sources', [])
+                        # Format search results for AI context
+                        search_summary = []
+                        search_summary.append(f"Web Search Results for: {message}")
+                        search_summary.append(f"Found {len(search_result['results'])} relevant sources")
+                        search_summary.append("\n--- Search Results ---")
+                        
+                        for i, result in enumerate(search_result['results'][:6], 1):
+                            search_summary.append(f"\n{i}. {result.get('title', 'No title')}")
+                            search_summary.append(f"   Source: {result.get('source', 'Unknown source')}")
+                            if result.get('published_date'):
+                                search_summary.append(f"   Published: {result['published_date']}")
+                            search_summary.append(f"   Content: {result.get('snippet', 'No content preview')}")
+                        
+                        search_summary.append("\n--- End Search Results ---")
+                        search_summary.append("\nPlease use this current web information to enhance your response.")
+                        
+                        web_search_context = '\n'.join(search_summary)
+                        
+                finally:
+                    loop.close()
+                    
+            except Exception as e:
+                print(f"Web search failed: {str(e)}")
+                # Continue without web search if it fails
         
         results = []
         
@@ -71,12 +120,18 @@ def test_ai_services(request):
                     model='claude-sonnet-4-20250514'
                 )
                 
+                # Prepare context with web search if available
+                context = {}
+                enhanced_message = message
+                if web_search_context:
+                    enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                
                 # Run async function
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     claude_response = loop.run_until_complete(
-                        claude_service.generate_response(message)
+                        claude_service.generate_response(enhanced_message, context)
                     )
                     
                     # Generate synopsis using Claude itself
@@ -119,12 +174,18 @@ def test_ai_services(request):
                     model='gpt-4o'
                 )
                 
+                # Prepare context with web search if available
+                context = {}
+                enhanced_message = message
+                if web_search_context:
+                    enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                
                 # Run async function
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     openai_response = loop.run_until_complete(
-                        openai_service.generate_response(message)
+                        openai_service.generate_response(enhanced_message, context)
                     )
                     
                     # Generate synopsis using OpenAI itself
@@ -167,12 +228,18 @@ def test_ai_services(request):
                     model='gemini-1.5-flash'
                 )
                 
+                # Prepare context with web search if available
+                context = {}
+                enhanced_message = message
+                if web_search_context:
+                    enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                
                 # Run async function
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     gemini_response = loop.run_until_complete(
-                        gemini_service.generate_response(message)
+                        gemini_service.generate_response(enhanced_message, context)
                     )
                     
                     # Generate synopsis using Gemini itself
@@ -210,10 +277,13 @@ def test_ai_services(request):
             'success': True,
             'message': message,
             'results': results,
+            'web_search_enabled': use_web_search,
+            'web_search_sources': web_search_sources,
             'api_keys_configured': {
                 'claude': bool(settings.CLAUDE_API_KEY),
                 'openai': bool(settings.OPENAI_API_KEY),
-                'gemini': bool(settings.GEMINI_API_KEY)
+                'gemini': bool(settings.GEMINI_API_KEY),
+                'google_search': bool(getattr(settings, 'GOOGLE_CSE_API_KEY', None))
             }
         })
         

@@ -49,6 +49,7 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 ### 🚀 Core Functionality
 - **Multi-AI Query**: Simultaneous responses from multiple leading AI models
 - **AI-Generated Smart Summaries**: Each AI creates its own intelligent 35-45 word synopsis
+- **Web Search Integration**: Optional real-time web search to enhance AI responses with up-to-date information
 - **Response Selection**: Choose your preferred response and continue the conversation
 - **Conversation Continuity**: Seamless chat experience with selected responses
 - **Real-time Visual Feedback**: Blinking animation while AIs are thinking, hover tooltips showing model information
@@ -66,6 +67,14 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 - **No Auto-Expansion**: Select for AI Critic doesn't automatically expand responses, giving users full control
 - **Professional Button Design**: Consistent height, padding, and visual weight across all interactive elements
 
+### 🌐 Web Search Features
+- **Real-time Web Search**: Toggle-enabled Google Custom Search integration for current information
+- **Intelligent Search Orchestration**: Automatic recency detection and smart query optimization
+- **Rate Limiting**: 2 search calls per user query with proper rate limiting per user
+- **Caching Layer**: 15-minute Redis TTL for efficient search result caching
+- **Source Display**: Collapsible web sources with clickable links (collapsed by default)
+- **Context Enhancement**: Web search results seamlessly integrated into AI prompts
+
 ### 🛠️ Technical Features
 - **REST API** backend with async AI service integration
 - **Modern web frontend** with real-time updates
@@ -77,31 +86,43 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 
 ```mermaid
 graph TB
-    U[User] -->|Query| F[React Frontend]
+    U[User] -->|Query + Web Search Toggle| F[React Frontend]
     F -->|HTTP Request| D[Django API]
-    
-    D -->|Parallel Requests| C[Claude API]
-    D -->|Parallel Requests| O[OpenAI API]
-    D -->|Parallel Requests| G[Gemini API]
-    
+
+    D -->|Web Search Enabled?| WSC[Web Search Coordinator]
+    WSC -->|Search Query| GSA[Google Custom Search API]
+    GSA -->|Search Results| WSC
+    WSC -->|Cached Results| RC[Redis Cache]
+    RC -->|15min TTL| WSC
+
+    D -->|Parallel Requests + Web Context| C[Claude API]
+    D -->|Parallel Requests + Web Context| O[OpenAI API]
+    D -->|Parallel Requests + Web Context| G[Gemini API]
+
     D -->|Structured JSON| PS[Pydantic Structured Summaries]
     PS -->|JSON Schema| C
     PS -->|JSON Schema| O
     PS -->|JSON Schema| G
-    
-    C -->|Response| D
-    O -->|Response| D  
-    G -->|Response| D
-    
-    D -->|JSON Response| F
-    F -->|Display| U
-    
+
+    C -->|Response + Sources| D
+    O -->|Response + Sources| D
+    G -->|Response + Sources| D
+
+    D -->|JSON Response + Web Sources| F
+    F -->|Display with Collapsible Sources| U
+
     subgraph "AI Services"
         C
         O
         G
     end
-    
+
+    subgraph "Web Search Layer"
+        WSC
+        GSA
+        RC
+    end
+
     subgraph "Advanced AI Features"
         PS
     end
@@ -146,13 +167,17 @@ graph TB
    ```env
    # AI Service API Keys (get these from respective providers)
    OPENAI_API_KEY=sk-your-openai-key
-   CLAUDE_API_KEY=sk-ant-your-claude-key  
+   CLAUDE_API_KEY=sk-ant-your-claude-key
    GEMINI_API_KEY=your-gemini-key
-   
+
+   # Google Custom Search API (for web search functionality)
+   GOOGLE_CSE_API_KEY=your-google-custom-search-api-key
+   GOOGLE_CSE_CX=your-custom-search-engine-id
+
    # Django Configuration
    SECRET_KEY=your-secret-key-here
    DEBUG=True
-   
+
    # Other settings are optional for basic setup
    ```
 
@@ -178,6 +203,8 @@ graph TB
    npm install
    ```
 
+   **Note**: The project includes modern dependencies like React 19, TailwindCSS 3.x with PostCSS plugin, and TypeScript.
+
 3. **Start frontend development server**
    ```bash
    npm start
@@ -196,23 +223,25 @@ graph TB
 1. **Python command not found**: Use `python3` instead of `python` on Mac/Linux
 2. **Port already in use**: Change the port number (e.g., `python3 manage.py runserver 8002`)
 3. **API keys not working**: Ensure API keys are correctly set in `.env` file
-4. **Frontend won't start**: 
+4. **Frontend won't start**:
    - Make sure you're in `frontend/frontend` directory
    - Run `npm install` again if needed
    - Security warnings are normal for development
+   - For TailwindCSS compilation errors, ensure `@tailwindcss/postcss` is installed
 5. **Redis connection errors**: App works without Redis - cache is configured to use dummy backend for development
 
 **Required API Keys:**
 - **OpenAI**: Get from https://platform.openai.com/api-keys
 - **Claude**: Get from https://console.anthropic.com/
 - **Gemini**: Get from https://ai.google.dev/
+- **Google Custom Search**: Get API key from https://developers.google.com/custom-search/v1/introduction and create Custom Search Engine at https://programmablesearchengine.google.com/
 
-**Note**: The app will work with just one API key, but you'll get the best experience with all three.
+**Note**: The app will work with just one AI API key, but you'll get the best experience with all three. Google Custom Search API is optional but enables web search functionality.
 
 ## API Endpoints
 
 ### Core Endpoints
-- `POST /api/v1/test-ai/` - Multi-AI query endpoint
+- `POST /api/v1/test-ai/` - Multi-AI query endpoint (supports web search via `use_web_search` parameter)
 - `POST /api/v1/conversations/` - Create conversation
 - `GET /api/v1/conversations/` - List conversations
 
@@ -232,6 +261,17 @@ graph TB
 curl -X POST http://localhost:8001/api/v1/test-ai/ \
   -H "Content-Type: application/json" \
   -d '{"message": "Explain machine learning", "services": ["claude", "openai", "gemini"]}'
+```
+
+### Multi-AI Query with Web Search
+```bash
+curl -X POST http://localhost:8001/api/v1/test-ai/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What are the latest developments in AI safety research?",
+    "services": ["claude", "openai", "gemini"],
+    "use_web_search": true
+  }'
 ```
 
 ### Structured Summary

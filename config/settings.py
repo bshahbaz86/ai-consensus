@@ -149,18 +149,18 @@ AUTH_USER_MODEL = 'accounts.User'
 REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
 
 # Cache Configuration
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': REDIS_URL,
-    }
-}
-# For development without Redis, use dummy cache:
 # CACHES = {
 #     'default': {
-#         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+#         'LOCATION': REDIS_URL,
 #     }
 # }
+# For development without Redis, use dummy cache:
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+}
 
 # Session Configuration
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
@@ -224,6 +224,10 @@ ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='dev-key-32-chars-for-encrypti
 CLAUDE_API_KEY = config('CLAUDE_API_KEY', default='')
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
+
+# Google Custom Search API Configuration
+GOOGLE_CSE_API_KEY = config('GOOGLE_CSE_API_KEY', default='')
+GOOGLE_CSE_CX = config('GOOGLE_CSE_CX', default='')
 
 # Logging Configuration
 LOGGING = {
