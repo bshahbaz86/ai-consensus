@@ -31,6 +31,7 @@ class ClaudeService(BaseAIService):
             headers = {
                 'x-api-key': self.api_key,
                 'anthropic-version': '2023-06-01',
+                'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31,computer-use-2024-10-22',
                 'content-type': 'application/json'
             }
             
@@ -69,22 +70,27 @@ class ClaudeService(BaseAIService):
     
     def _build_messages(self, prompt: str, context: Dict[str, Any]) -> list:
         messages = []
-        
+
         conversation_history = context.get('conversation_history', [])
         for msg in conversation_history:
             messages.append({
                 'role': msg.get('role', 'user'),
                 'content': msg.get('content', '')
             })
-        
-        # Enhance prompt with web search results if available
-        enhanced_prompt = self._enhance_prompt_with_web_search(prompt, context)
-        
+
+        # Check if we have web search results for citations
+        if self._has_web_search_results(context):
+            content_blocks = self._build_content_with_citations(prompt, context)
+        else:
+            # Fallback to simple text content
+            enhanced_prompt = self._enhance_prompt_with_web_search(prompt, context)
+            content_blocks = enhanced_prompt
+
         messages.append({
             'role': 'user',
-            'content': enhanced_prompt
+            'content': content_blocks
         })
-        
+
         return messages
     
     def _enhance_prompt_with_web_search(self, prompt: str, context: Dict[str, Any]) -> str:
@@ -116,3 +122,54 @@ class ClaudeService(BaseAIService):
         enhanced_parts.append("\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results.")
         
         return "\n\n".join(enhanced_parts)
+
+    def _has_web_search_results(self, context: Dict[str, Any]) -> bool:
+        """Check if context contains web search results suitable for citations."""
+        web_search = context.get('web_search', {})
+        return (
+            web_search.get('enabled', False) and
+            web_search.get('results') and
+            len(web_search.get('results', [])) > 0
+        )
+
+    def _build_content_with_citations(self, prompt: str, context: Dict[str, Any]) -> list:
+        """Build content blocks using Claude's citations format for web search results."""
+        content_blocks = []
+
+        # Add the user's question as text
+        content_blocks.append({
+            "type": "text",
+            "text": f"User question: {prompt}\n\nPlease provide a comprehensive response using the provided web search results. Use citations to reference specific information from the sources."
+        })
+
+        # Add each web search result as a document with citations enabled
+        web_search = context.get('web_search', {})
+        search_results = web_search.get('results', [])
+
+        for i, result in enumerate(search_results[:6], 1):  # Limit to top 6 results
+            # Create document content from search result
+            doc_content = []
+            doc_content.append(f"Title: {result.get('title', 'No title')}")
+            doc_content.append(f"Source: {result.get('source', 'Unknown source')}")
+
+            if result.get('published_date'):
+                doc_content.append(f"Published: {result['published_date']}")
+
+            if result.get('snippet'):
+                doc_content.append(f"Content: {result['snippet']}")
+
+            if result.get('relevance_note'):
+                doc_content.append(f"Relevance: {result['relevance_note']}")
+
+            # Add document block with citations enabled
+            content_blocks.append({
+                "type": "document",
+                "source": {
+                    "type": "text",
+                    "media_type": "text/plain",
+                    "data": "\n".join(doc_content)
+                },
+                "citations": {"enabled": True}
+            })
+
+        return content_blocks

@@ -4,7 +4,7 @@ API v1 conversations views.
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.db.models import Q, Prefetch
 from django.shortcuts import get_object_or_404
@@ -25,15 +25,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
     Provides CRUD operations, search, and conversation forking.
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'messages__content']
     ordering_fields = ['created_at', 'updated_at', 'total_tokens_used', 'title']
     ordering = ['-updated_at']
 
     def get_queryset(self):
-        """Return all conversations (no user filtering for demo purposes)."""
-        queryset = Conversation.objects.all()
+        """Return conversations for the current user only."""
+        queryset = Conversation.objects.filter(user=self.request.user)
 
         # Optimize queries based on action
         if self.action == 'list':
@@ -62,9 +62,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return ConversationDetailSerializer
 
     def perform_create(self, serializer):
-        """Create conversation without user association."""
-        # Don't pass user at all since field is optional
-        serializer.save(user=None)
+        """Set user when creating conversation."""
+        serializer.save(user=self.request.user)
 
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -132,7 +131,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         # Create new conversation
         title = serializer.validated_data.get('title') or f"Fork of {conversation.title}"
         new_conversation = Conversation.objects.create(
-            user=None,
+            user=request.user,
             title=title,
             agent_mode=conversation.agent_mode
         )
@@ -193,21 +192,22 @@ class MessageViewSet(viewsets.ReadOnlyModelViewSet):
     ViewSet for reading messages within conversations.
     """
     serializer_class = MessageSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['timestamp']
     ordering = ['timestamp']
 
     def get_queryset(self):
-        """Return messages for a specific conversation."""
+        """Return messages for a specific conversation owned by the user."""
         conversation_id = self.kwargs.get('conversation_pk')
         if not conversation_id:
             return Message.objects.none()
 
-        # Get the conversation
+        # Verify user owns the conversation
         conversation = get_object_or_404(
             Conversation,
-            id=conversation_id
+            id=conversation_id,
+            user=self.request.user
         )
 
         return Message.objects.filter(conversation=conversation)

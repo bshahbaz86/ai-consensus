@@ -61,6 +61,7 @@ def test_ai_services(request):
         message = data.get('message', 'Hello, how are you?')
         services = data.get('services', ['claude', 'openai', 'gemini'])
         use_web_search = data.get('use_web_search', False)
+        chat_history = data.get('chat_history', '')
         
         # Handle web search if enabled
         web_search_context = None
@@ -120,11 +121,19 @@ def test_ai_services(request):
                     model='claude-sonnet-4-20250514'
                 )
                 
-                # Prepare context with web search if available
+                # Prepare context with web search and chat history if available
                 context = {}
                 enhanced_message = message
+
+                # Add chat history if available
+                if chat_history:
+                    enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
+
                 if web_search_context:
-                    enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                    if chat_history:
+                        enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                    else:
+                        enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
                 
                 # Run async function
                 loop = asyncio.new_event_loop()
@@ -174,11 +183,19 @@ def test_ai_services(request):
                     model='gpt-4o'
                 )
                 
-                # Prepare context with web search if available
+                # Prepare context with web search and chat history if available
                 context = {}
                 enhanced_message = message
+
+                # Add chat history if available
+                if chat_history:
+                    enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
+
                 if web_search_context:
-                    enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                    if chat_history:
+                        enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                    else:
+                        enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
                 
                 # Run async function
                 loop = asyncio.new_event_loop()
@@ -228,11 +245,19 @@ def test_ai_services(request):
                     model='gemini-1.5-flash'
                 )
                 
-                # Prepare context with web search if available
+                # Prepare context with web search and chat history if available
                 context = {}
                 enhanced_message = message
+
+                # Add chat history if available
+                if chat_history:
+                    enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
+
                 if web_search_context:
-                    enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                    if chat_history:
+                        enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                    else:
+                        enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
                 
                 # Run async function
                 loop = asyncio.new_event_loop()

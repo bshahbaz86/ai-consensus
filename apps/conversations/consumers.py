@@ -105,7 +105,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'message': {
                             'id': result['message_id'],
                             'content': message_content,
-                            'sender': 'user',
+                            'role': 'user',
                             'timestamp': None
                         },
                         'query': {

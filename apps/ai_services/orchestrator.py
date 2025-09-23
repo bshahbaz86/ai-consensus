@@ -33,9 +33,8 @@ class MultiAgentOrchestrator:
                 
                 user_message = Message.objects.create(
                     conversation=conversation,
-                    sender=user,
-                    content=prompt,
-                    message_type='user'
+                    role='user',
+                    content=prompt
                 )
                 
                 # Perform web search if enabled

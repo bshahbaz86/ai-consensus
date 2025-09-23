@@ -11,7 +11,7 @@ app_name = 'api_v1'
 
 urlpatterns = [
     path('auth/', include('api.v1.accounts.urls')),
-    path('conversations/', include('api.v1.conversations.urls')),
+    path('conversations/', include('api.v1.conversations.urls', namespace='conversations')),
     path('ai-services/', include('api.v1.ai_services.urls')),
     path('responses/', include('api.v1.responses.urls')),
     path('test-ai/', test_ai_services, name='test_ai'),
