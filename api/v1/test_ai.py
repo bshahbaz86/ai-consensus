@@ -66,7 +66,8 @@ def test_ai_services(request):
         # Handle web search if enabled
         web_search_context = None
         web_search_sources = []
-        
+        search_result = None
+
         if use_web_search:
             try:
                 search_coordinator = WebSearchCoordinator()
@@ -116,11 +117,11 @@ def test_ai_services(request):
         if 'claude' in services and settings.CLAUDE_API_KEY:
             try:
                 claude_service = AIServiceFactory.create_service(
-                    'claude', 
+                    'claude',
                     settings.CLAUDE_API_KEY,
                     model='claude-sonnet-4-20250514'
                 )
-                
+
                 # Prepare context with web search and chat history if available
                 context = {}
                 enhanced_message = message
@@ -129,7 +130,13 @@ def test_ai_services(request):
                 if chat_history:
                     enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
 
-                if web_search_context:
+                # Add web search context for Claude's citation system
+                if web_search_context and use_web_search and search_result and search_result.get('success', False):
+                    context['web_search'] = {
+                        'enabled': True,
+                        'results': search_result['results']
+                    }
+                    # For fallback compatibility, still add text-based context
                     if chat_history:
                         enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
                     else:
@@ -179,10 +186,10 @@ def test_ai_services(request):
             try:
                 openai_service = AIServiceFactory.create_service(
                     'openai',
-                    settings.OPENAI_API_KEY, 
+                    settings.OPENAI_API_KEY,
                     model='gpt-4o'
                 )
-                
+
                 # Prepare context with web search and chat history if available
                 context = {}
                 enhanced_message = message
@@ -191,7 +198,13 @@ def test_ai_services(request):
                 if chat_history:
                     enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
 
-                if web_search_context:
+                # Add web search context
+                if web_search_context and use_web_search and search_result and search_result.get('success', False):
+                    context['web_search'] = {
+                        'enabled': True,
+                        'results': search_result['results']
+                    }
+                    # For fallback compatibility, still add text-based context
                     if chat_history:
                         enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
                     else:
@@ -242,9 +255,9 @@ def test_ai_services(request):
                 gemini_service = AIServiceFactory.create_service(
                     'gemini',
                     settings.GEMINI_API_KEY,
-                    model='gemini-1.5-flash'
+                    model='gemini-1.5-pro'
                 )
-                
+
                 # Prepare context with web search and chat history if available
                 context = {}
                 enhanced_message = message
@@ -253,7 +266,13 @@ def test_ai_services(request):
                 if chat_history:
                     enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
 
-                if web_search_context:
+                # Add web search context
+                if web_search_context and use_web_search and search_result and search_result.get('success', False):
+                    context['web_search'] = {
+                        'enabled': True,
+                        'results': search_result['results']
+                    }
+                    # For fallback compatibility, still add text-based context
                     if chat_history:
                         enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
                     else:
@@ -275,7 +294,7 @@ def test_ai_services(request):
                                 gemini_response['content'],
                                 'gemini',
                                 settings.GEMINI_API_KEY,
-                                'gemini-1.5-flash'
+                                'gemini-1.5-pro'
                             )
                         )
                     
@@ -395,20 +414,38 @@ What would a superior response combine from both? What novel approaches could su
 
 Focus on helping improve future responses while maintaining objectivity in your evaluation."""
 
-        # Use Claude for the critique (as it's typically most analytical)
-        if settings.CLAUDE_API_KEY:
-            claude_service = AIServiceFactory.create_service(
+        # Use OpenAI for critique to avoid bias (if available), fallback to Claude
+        critique_service = None
+        critique_provider = None
+
+        # Try OpenAI first to avoid self-evaluation bias when comparing Claude responses
+        if settings.OPENAI_API_KEY and 'claude' in [llm1_name.lower(), llm2_name.lower()]:
+            try:
+                critique_service = AIServiceFactory.create_service(
+                    'openai',
+                    settings.OPENAI_API_KEY,
+                    model='gpt-4o'
+                )
+                critique_provider = 'OpenAI (unbiased)'
+            except Exception:
+                critique_service = None
+
+        # Fallback to Claude if OpenAI unavailable or no Claude responses being compared
+        if not critique_service and settings.CLAUDE_API_KEY:
+            critique_service = AIServiceFactory.create_service(
                 'claude',
                 settings.CLAUDE_API_KEY,
                 model='claude-sonnet-4-20250514'
             )
+            critique_provider = 'Claude'
 
+        if critique_service:
             # Run async function
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 critique_response = loop.run_until_complete(
-                    claude_service.generate_response(critique_prompt)
+                    critique_service.generate_response(critique_prompt)
                 )
             finally:
                 loop.close()
@@ -416,7 +453,8 @@ Focus on helping improve future responses while maintaining objectivity in your 
             if critique_response['success']:
                 return JsonResponse({
                     'success': True,
-                    'critique': critique_response['content']
+                    'critique': critique_response['content'],
+                    'critique_provider': critique_provider
                 })
             else:
                 return JsonResponse({
@@ -426,7 +464,7 @@ Focus on helping improve future responses while maintaining objectivity in your 
         else:
             return JsonResponse({
                 'success': False,
-                'error': 'Claude API key not configured for critique functionality'
+                'error': 'No AI service available for critique functionality (configure OpenAI or Claude API keys)'
             }, status=500)
 
     except Exception as e:

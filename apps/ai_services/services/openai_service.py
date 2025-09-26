@@ -166,28 +166,56 @@ class OpenAIService(BaseAIService):
         """
         Enhance the user prompt with web search results if available.
         """
+        # Check for new web search format
+        web_search = context.get('web_search', {})
+        if web_search.get('enabled', False) and web_search.get('results'):
+            # Build enhanced prompt with search context
+            enhanced_parts = []
+
+            # Add web search context
+            enhanced_parts.append("Current web information:")
+
+            for i, result in enumerate(web_search['results'][:6], 1):
+                enhanced_parts.append(f"\n{i}. {result.get('title', 'No title')}")
+                enhanced_parts.append(f"   Source: {result.get('source', 'Unknown source')}")
+                if result.get('published_date'):
+                    enhanced_parts.append(f"   Published: {result['published_date']}")
+                enhanced_parts.append(f"   Content: {result.get('snippet', 'No content preview')}")
+
+            enhanced_parts.append("\n" + "="*50 + "\n")
+
+            # Add original user query
+            enhanced_parts.append("User question:")
+            enhanced_parts.append(prompt)
+
+            # Add instruction for using web data
+            enhanced_parts.append("\nPlease provide a comprehensive response using both the current web information above and your knowledge. When referencing specific information from the sources, use numbered citations in brackets like [1], [2], [3] etc. that correspond to the source numbers provided above.")
+
+            return "\n\n".join(enhanced_parts)
+
+        # Fallback to old format for compatibility
         if not context.get('has_web_search', False):
             return prompt
-        
+
         external_knowledge = context.get('external_knowledge', {})
         if external_knowledge.get('status') != 'success':
             return prompt
-        
+
         # Build enhanced prompt with search context
         enhanced_parts = []
-        
+
         # Add web search context
         search_content = external_knowledge.get('formatted_content', '')
         if search_content:
             enhanced_parts.append("Current web information:")
             enhanced_parts.append(search_content)
             enhanced_parts.append("\n" + "="*50 + "\n")
-        
+
         # Add original user query
         enhanced_parts.append("User question:")
         enhanced_parts.append(prompt)
-        
+
         # Add instruction for using web data
-        enhanced_parts.append("\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results.")
-        
+        enhanced_parts.append("\nPlease provide a comprehensive response using both the current web information above and your knowledge. When referencing specific information from the sources, use numbered citations in brackets like [1], [2], [3] etc. that correspond to the source numbers provided above.")
+
         return "\n\n".join(enhanced_parts)

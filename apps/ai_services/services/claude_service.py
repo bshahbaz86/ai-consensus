@@ -139,7 +139,7 @@ class ClaudeService(BaseAIService):
         # Add the user's question as text
         content_blocks.append({
             "type": "text",
-            "text": f"User question: {prompt}\n\nPlease provide a comprehensive response using the provided web search results. Use citations to reference specific information from the sources."
+            "text": f"User question: {prompt}\n\nPlease provide a comprehensive response using the provided web search results. When referencing specific information from the sources, use numbered citations in brackets like [1], [2], [3] etc. that correspond to the source numbers provided below."
         })
 
         # Add each web search result as a document with citations enabled
