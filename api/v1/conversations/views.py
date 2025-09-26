@@ -188,9 +188,9 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class MessageViewSet(viewsets.ReadOnlyModelViewSet):
+class MessageViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for reading messages within conversations.
+    ViewSet for managing messages within conversations.
     """
     serializer_class = MessageSerializer
     permission_classes = [AllowAny]
@@ -211,3 +211,16 @@ class MessageViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         return Message.objects.filter(conversation=conversation)
+
+    def perform_create(self, serializer):
+        """Create message for the conversation."""
+        conversation_id = self.kwargs.get('conversation_pk')
+        conversation = get_object_or_404(Conversation, id=conversation_id)
+
+        # Save the message
+        message = serializer.save(conversation=conversation)
+
+        # Update conversation metadata
+        conversation.update_conversation_metadata()
+
+        return message

@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Plus, Menu, Globe } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
-import { apiService, Conversation } from '../services/api';
+import { apiService, Conversation, ConversationDetail } from '../services/api';
 
 interface AIResponse {
   service: string;
@@ -43,6 +43,7 @@ const AIConsensusComplete: React.FC = () => {
 
   // Conversation tracking for chat history
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [conversationHistory, setConversationHistory] = useState<Array<{role: string, content: string}>>([]);
 
   // Keep track of all conversation exchanges (question + responses)
@@ -60,6 +61,124 @@ const AIConsensusComplete: React.FC = () => {
   const [previousCritiqueResults, setPreviousCritiqueResults] = useState<{[key: string]: string}>({});
   const [previousCritiqueProviders, setPreviousCritiqueProviders] = useState<{[key: string]: string}>({});
   const [loadingPreviousCritique, setLoadingPreviousCritique] = useState<{[key: string]: boolean}>({});
+
+  // Initialize conversation on component mount
+  useEffect(() => {
+    const initializeConversation = async () => {
+      try {
+        const newConversation = await apiService.createConversation({
+          title: 'New AI Consensus Chat',
+          agent_mode: 'standard'
+        });
+        setCurrentConversationId(newConversation.id);
+        setCurrentConversation(newConversation);
+        console.log('Created new conversation:', newConversation.id);
+      } catch (error) {
+        console.error('Failed to create conversation:', error);
+        // Continue without persistence if API fails
+      }
+    };
+
+    initializeConversation();
+  }, []);
+
+  // Handle conversation selection from sidebar
+  const handleConversationSelect = async (conversation: Conversation) => {
+    try {
+      // Load the full conversation details
+      const fullConversation = await apiService.getConversation(conversation.id);
+      setCurrentConversationId(conversation.id);
+      setCurrentConversation(fullConversation);
+      setSelectedConversation(conversation);
+
+      // Load conversation history from messages
+      if (fullConversation.messages && fullConversation.messages.length > 0) {
+        const history = fullConversation.messages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }));
+        setConversationHistory(history);
+      } else {
+        setConversationHistory([]);
+      }
+
+      // Clear current UI state
+      setResponses([]);
+      setConversationExchanges([]);
+      setCritiqueResult(null);
+      setExpandedResponses(new Set());
+      setSelectedForCritique(new Set());
+      setPreferredResponses(new Set());
+
+      // Close sidebar on mobile
+      setSidebarOpen(false);
+      console.log('Loaded conversation:', conversation.id);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
+  // Handle creating new conversation
+  const handleNewConversation = async () => {
+    try {
+      const newConversation = await apiService.createConversation({
+        title: 'New AI Consensus Chat',
+        agent_mode: 'standard'
+      });
+      setCurrentConversationId(newConversation.id);
+      setCurrentConversation(newConversation);
+      setSelectedConversation(null);
+
+      // Clear all state for fresh conversation
+      setConversationHistory([]);
+      setResponses([]);
+      setConversationExchanges([]);
+      setCritiqueResult(null);
+      setExpandedResponses(new Set());
+      setSelectedForCritique(new Set());
+      setPreferredResponses(new Set());
+
+      // Close sidebar
+      setSidebarOpen(false);
+      console.log('Created new conversation:', newConversation.id);
+    } catch (error) {
+      console.error('Failed to create new conversation:', error);
+    }
+  };
+
+  // Helper function to save a message to the database
+  const saveMessage = async (role: 'user' | 'assistant' | 'system', content: string, metadata: any = {}) => {
+    if (!currentConversationId) return;
+
+    try {
+      // Using direct fetch since we don't have a messages endpoint in apiService yet
+      await fetch(`http://localhost:8000/api/v1/conversations/${currentConversationId}/messages/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role,
+          content,
+          metadata,
+          tokens_used: Math.ceil(content.length / 4) // Rough token estimate
+        })
+      });
+    } catch (error) {
+      console.error('Failed to save message:', error);
+    }
+  };
+
+  // Helper function to update conversation title based on first message
+  const updateConversationTitle = async (message: string) => {
+    if (!currentConversationId || !currentConversation || currentConversation.total_messages > 0) return;
+
+    try {
+      const title = message.length > 50 ? message.substring(0, 50) + '...' : message;
+      await apiService.updateConversation(currentConversationId, { title });
+      setCurrentConversation(prev => prev ? { ...prev, title } : null);
+    } catch (error) {
+      console.error('Failed to update conversation title:', error);
+    }
+  };
 
   const services = [
     { id: 'claude', name: 'Claude', color: '#FF6B35' },
@@ -117,7 +236,9 @@ const AIConsensusComplete: React.FC = () => {
       textareaRef.current.style.height = '48px'; // Reset to min height
     }
 
-    // Add user message to conversation history immediately
+    // Save user message to database and add to conversation history
+    await saveMessage('user', currentQuestion);
+    await updateConversationTitle(currentQuestion);
     setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
 
     try {
@@ -141,9 +262,19 @@ const AIConsensusComplete: React.FC = () => {
         setResponses(data.results);
         setWebSearchSources(data.web_search_sources || []);
 
-        // Add AI responses to conversation history - batch update to avoid multiple re-renders
+        // Save AI responses to database and add to conversation history
         if (data.results && data.results.length > 0) {
           const successfulResults = data.results.filter((r: any) => r.success);
+
+          // Save each AI response to the database
+          for (const result of successfulResults) {
+            await saveMessage('assistant', result.content, {
+              service: result.service,
+              synopsis: result.synopsis,
+              web_search_sources: webSearchEnabled ? data.web_search_sources : undefined
+            });
+          }
+
           const newResponses = successfulResults.map((result: any) => ({ role: result.service, content: result.content }));
           setConversationHistory(prev => [...prev, ...newResponses]);
         }
@@ -351,37 +482,6 @@ const AIConsensusComplete: React.FC = () => {
     });
   };
 
-  const handleNewConversation = async () => {
-    try {
-      const newConversation = await apiService.createConversation({
-        title: 'New Chat',
-        agent_mode: 'standard',
-      });
-      setSelectedConversation(newConversation);
-      setSidebarOpen(false);
-      // Reset state for new conversation
-      setQuestion('');
-      setResponses([]);
-      setCritiqueResult(null);
-      setSelectedForCritique(new Set());
-      setConversationExchanges([]);
-      setConversationHistory([]);
-    } catch (err) {
-      console.error('Error creating new conversation:', err);
-    }
-  };
-
-  const handleConversationSelect = (conversation: Conversation) => {
-    setSelectedConversation(conversation);
-    setSidebarOpen(false);
-    // Reset state when selecting conversation
-    setQuestion('');
-    setResponses([]);
-    setCritiqueResult(null);
-    setSelectedForCritique(new Set());
-    setConversationExchanges([]);
-    setConversationHistory([]);
-  };
 
   return (
     <div className="min-h-screen bg-white">

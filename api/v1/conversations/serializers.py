@@ -21,7 +21,7 @@ class MessageSerializer(serializers.ModelSerializer):
             'id', 'role', 'content', 'timestamp',
             'tokens_used', 'metadata', 'query_session'
         ]
-        read_only_fields = ['id', 'timestamp', 'tokens_used', 'metadata', 'query_session']
+        read_only_fields = ['id', 'timestamp']
 
 
 class ConversationContextSerializer(serializers.ModelSerializer):
