@@ -10,6 +10,7 @@ interface ConversationHistoryProps {
   onConversationSelect: (conversation: Conversation) => void;
   onNewConversation: () => void;
   className?: string;
+  refreshTrigger?: number; // Add this to trigger refresh when incremented
 }
 
 interface ConversationItemProps {
@@ -196,6 +197,7 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   onConversationSelect,
   onNewConversation,
   className = '',
+  refreshTrigger = 0,
 }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,6 +241,13 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Refresh conversations when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      loadConversations();
+    }
+  }, [refreshTrigger, loadConversations]);
 
   // Conversation actions
   const handleArchive = async (conversationId: string) => {

@@ -146,9 +146,13 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
         fields = ['title', 'agent_mode']
 
     def create(self, validated_data):
-        """Create conversation with user from request context."""
-        user = self.context['request'].user
-        validated_data['user'] = user
+        """Create conversation with user from request context if authenticated."""
+        request = self.context.get('request')
+        if request and request.user and request.user.is_authenticated:
+            validated_data['user'] = request.user
+        else:
+            # Allow conversations without a user for demo purposes
+            validated_data['user'] = None
         return super().create(validated_data)
 
 

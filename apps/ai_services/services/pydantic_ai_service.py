@@ -23,8 +23,8 @@ class UnifiedStructuredService:
     # Model mappings for each provider
     PROVIDER_MODELS = {
         'openai': 'gpt-4o',
-        'claude': 'claude-3-5-sonnet-latest', 
-        'gemini': 'gemini-1.5-pro'
+        'claude': 'claude-3-5-sonnet-latest',
+        'gemini': 'gemini-flash-latest'
     }
     
     def __init__(self):

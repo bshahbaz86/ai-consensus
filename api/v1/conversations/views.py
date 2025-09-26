@@ -61,6 +61,23 @@ class ConversationViewSet(viewsets.ModelViewSet):
             return ConversationUpdateSerializer
         return ConversationDetailSerializer
 
+    def create(self, request, *args, **kwargs):
+        """Override create to return detailed conversation after creation."""
+        # Use the create serializer for input validation
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Perform the creation
+        self.perform_create(serializer)
+
+        # Return the full conversation details using DetailSerializer
+        instance = serializer.instance
+        detail_serializer = ConversationDetailSerializer(instance, context=self.get_serializer_context())
+        headers = self.get_success_headers(detail_serializer.data)
+
+        from rest_framework import status
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         """Create conversation without user association."""
         # Don't pass user at all since field is optional

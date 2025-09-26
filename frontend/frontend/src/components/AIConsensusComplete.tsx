@@ -45,6 +45,7 @@ const AIConsensusComplete: React.FC = () => {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
   const [conversationHistory, setConversationHistory] = useState<Array<{role: string, content: string}>>([]);
+  const [conversationRefreshTrigger, setConversationRefreshTrigger] = useState(0);
 
   // Keep track of all conversation exchanges (question + responses)
   const [conversationExchanges, setConversationExchanges] = useState<Array<{
@@ -72,6 +73,8 @@ const AIConsensusComplete: React.FC = () => {
         });
         setCurrentConversationId(newConversation.id);
         setCurrentConversation(newConversation);
+        // Trigger conversation history refresh
+        setConversationRefreshTrigger(prev => prev + 1);
         console.log('Created new conversation:', newConversation.id);
       } catch (error) {
         console.error('Failed to create conversation:', error);
@@ -140,6 +143,8 @@ const AIConsensusComplete: React.FC = () => {
 
       // Close sidebar
       setSidebarOpen(false);
+      // Trigger conversation history refresh
+      setConversationRefreshTrigger(prev => prev + 1);
       console.log('Created new conversation:', newConversation.id);
     } catch (error) {
       console.error('Failed to create new conversation:', error);
@@ -515,6 +520,7 @@ const AIConsensusComplete: React.FC = () => {
               onConversationSelect={handleConversationSelect}
               onNewConversation={handleNewConversation}
               className="h-full border-r-0"
+              refreshTrigger={conversationRefreshTrigger}
             />
           </div>
         </div>

@@ -14,7 +14,7 @@ class GeminiService(BaseAIService):
     
     def __init__(self, api_key: str, **kwargs):
         super().__init__(api_key, **kwargs)
-        self.model = kwargs.get('model', 'gemini-1.5-pro')
+        self.model = kwargs.get('model', 'gemini-flash-latest')
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
         self.default_max_tokens = kwargs.get('max_tokens', 1000)
     
@@ -174,6 +174,7 @@ class GeminiService(BaseAIService):
             'capabilities': ['text_generation', 'conversation'],
             'max_tokens': 8192,
             'supported_models': [
+                'gemini-flash-latest',
                 'gemini-1.5-pro',
                 'gemini-1.5-flash',
                 'gemini-1.0-pro'
