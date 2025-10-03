@@ -14,9 +14,9 @@ class GeminiService(BaseAIService):
     
     def __init__(self, api_key: str, **kwargs):
         super().__init__(api_key, **kwargs)
-        self.model = kwargs.get('model', 'gemini-flash-latest')
+        self.model = kwargs.get('model', 'gemini-2.0-flash-exp')
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
-        self.default_max_tokens = kwargs.get('max_tokens', 1000)
+        self.default_max_tokens = kwargs.get('max_tokens', 4096)
     
     @property
     def service_name(self) -> str:

@@ -229,7 +229,11 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
       };
 
       const response = await apiService.getConversations(params);
-      setConversations(response.results);
+      // Filter out conversations with zero messages
+      const filteredConversations = response.results.filter(
+        (conv) => conv.total_messages > 0
+      );
+      setConversations(filteredConversations);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load conversations');
       console.error('Error loading conversations:', err);

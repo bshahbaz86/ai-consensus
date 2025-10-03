@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Menu, Globe } from 'lucide-react';
+import { X, Plus, Menu, Globe, Copy, Check } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
@@ -47,11 +47,15 @@ const AIConsensusComplete: React.FC = () => {
   const [conversationHistory, setConversationHistory] = useState<Array<{role: string, content: string}>>([]);
   const [conversationRefreshTrigger, setConversationRefreshTrigger] = useState(0);
 
-  // Keep track of all conversation exchanges (question + responses)
+  // Keep track of all conversation exchanges (question + responses + analysis results)
   const [conversationExchanges, setConversationExchanges] = useState<Array<{
     question: string;
     responses: AIResponse[];
     webSearchSources: WebSearchSource[];
+    critiqueResult?: string;
+    critiqueProvider?: string;
+    synthesisResult?: string;
+    synthesisProvider?: string;
   }>>([]);
 
   // Track expanded states for previous exchanges (collapsed by default)
@@ -62,6 +66,23 @@ const AIConsensusComplete: React.FC = () => {
   const [previousCritiqueResults, setPreviousCritiqueResults] = useState<{[key: string]: string}>({});
   const [previousCritiqueProviders, setPreviousCritiqueProviders] = useState<{[key: string]: string}>({});
   const [loadingPreviousCritique, setLoadingPreviousCritique] = useState<{[key: string]: boolean}>({});
+
+  // Synthesis/Combine state
+  const [synthesisResult, setSynthesisResult] = useState<string | null>(null);
+  const [synthesisProvider, setSynthesisProvider] = useState<string | null>(null);
+  const [loadingSynthesis, setLoadingSynthesis] = useState(false);
+  const [previousSynthesisResults, setPreviousSynthesisResults] = useState<{[key: string]: string}>({});
+  const [previousSynthesisProviders, setPreviousSynthesisProviders] = useState<{[key: string]: string}>({});
+  const [loadingPreviousSynthesis, setLoadingPreviousSynthesis] = useState<{[key: string]: boolean}>({});
+
+  // Expand/Collapse state for analysis results
+  const [critiqueExpanded, setCritiqueExpanded] = useState(true);
+  const [synthesisExpanded, setSynthesisExpanded] = useState(true);
+  const [previousCritiqueExpanded, setPreviousCritiqueExpanded] = useState<{[key: string]: boolean}>({});
+  const [previousSynthesisExpanded, setPreviousSynthesisExpanded] = useState<{[key: string]: boolean}>({});
+
+  // Copy state tracking
+  const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
 
   // Initialize conversation on component mount
   useEffect(() => {
@@ -94,20 +115,71 @@ const AIConsensusComplete: React.FC = () => {
       setCurrentConversation(fullConversation);
       setSelectedConversation(conversation);
 
-      // Load conversation history from messages
+      // Load conversation history from messages and reconstruct exchanges
       if (fullConversation.messages && fullConversation.messages.length > 0) {
         const history = fullConversation.messages.map(msg => ({
           role: msg.role,
           content: msg.content
         }));
         setConversationHistory(history);
+
+        // Reconstruct conversationExchanges from messages
+        const exchanges: Array<{
+          question: string;
+          responses: AIResponse[];
+          webSearchSources: WebSearchSource[];
+          critiqueResult?: string;
+          critiqueProvider?: string;
+          synthesisResult?: string;
+          synthesisProvider?: string;
+        }> = [];
+
+        let currentExchange: any = null;
+
+        for (const msg of fullConversation.messages) {
+          if (msg.role === 'user') {
+            // Start a new exchange
+            if (currentExchange && currentExchange.responses.length > 0) {
+              exchanges.push(currentExchange);
+            }
+            currentExchange = {
+              question: msg.content,
+              responses: [],
+              webSearchSources: []
+            };
+          } else if (msg.role === 'assistant' && currentExchange) {
+            // Add assistant response to current exchange
+            const metadata = msg.metadata || {};
+            const service = metadata.service || 'Unknown';
+
+            currentExchange.responses.push({
+              service: service,
+              content: msg.content,
+              success: true,
+              synopsis: metadata.synopsis || '',
+              provider: service
+            });
+
+            // Extract web search sources if available
+            if (metadata.web_search_sources && metadata.web_search_sources.length > 0) {
+              currentExchange.webSearchSources = metadata.web_search_sources;
+            }
+          }
+        }
+
+        // Push the last exchange if it exists
+        if (currentExchange && currentExchange.responses.length > 0) {
+          exchanges.push(currentExchange);
+        }
+
+        setConversationExchanges(exchanges);
       } else {
         setConversationHistory([]);
+        setConversationExchanges([]);
       }
 
       // Clear current UI state
       setResponses([]);
-      setConversationExchanges([]);
       setCritiqueResult(null);
       setExpandedResponses(new Set());
       setSelectedForCritique(new Set());
@@ -214,10 +286,15 @@ const AIConsensusComplete: React.FC = () => {
       const lastUserMessage = conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0];
       const newExchangeIndex = conversationExchanges.length;
 
+      // Archive the responses along with any analysis results
       setConversationExchanges(prev => [...prev, {
         question: lastUserMessage?.content || 'Previous question',
         responses: responses,
-        webSearchSources: webSearchSources
+        webSearchSources: webSearchSources,
+        critiqueResult: critiqueResult || undefined,
+        critiqueProvider: critiqueProvider || undefined,
+        synthesisResult: synthesisResult || undefined,
+        synthesisProvider: synthesisProvider || undefined,
       }]);
 
       // Auto-collapse the new exchange by default
@@ -231,6 +308,8 @@ const AIConsensusComplete: React.FC = () => {
     setResponses([]); // Clear current responses for new query
     setCritiqueResult(null);
     setCritiqueProvider(null);
+    setSynthesisResult(null);
+    setSynthesisProvider(null);
     setSelectedForCritique(new Set());
     setPreferredResponses(new Set());
     setExpandedResponses(new Set());
@@ -361,6 +440,48 @@ const AIConsensusComplete: React.FC = () => {
     }
   };
 
+  const performSynthesis = async () => {
+    if (selectedForCritique.size !== 2) {
+      alert('Please select exactly 2 responses to combine');
+      return;
+    }
+
+    const selectedIndices = Array.from(selectedForCritique);
+    const response1 = responses[selectedIndices[0]];
+    const response2 = responses[selectedIndices[1]];
+
+    setLoadingSynthesis(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
+          llm1_name: response1.service,
+          llm1_response: response1.content,
+          llm2_name: response2.service,
+          llm2_response: response2.content,
+          chat_history: ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setSynthesisResult(data.synthesis);
+        setSynthesisProvider(data.synthesis_provider || 'Unknown');
+      } else {
+        alert('Synthesis failed: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Synthesis error:', error);
+      alert('Synthesis error: ' + error);
+    } finally {
+      setLoadingSynthesis(false);
+    }
+  };
+
   const performPreviousCritique = async (exchangeIndex: number, exchange: any) => {
     const exchangeKey = `${exchangeIndex}`;
     const selectedSet = previousExchangesSelected[exchangeKey] || new Set();
@@ -395,6 +516,7 @@ const AIConsensusComplete: React.FC = () => {
       if (data.success) {
         setPreviousCritiqueResults(prev => ({...prev, [exchangeKey]: data.critique}));
         setPreviousCritiqueProviders(prev => ({...prev, [exchangeKey]: data.critique_provider || 'Unknown'}));
+        setPreviousCritiqueExpanded(prev => ({...prev, [exchangeKey]: true})); // Default to expanded
       } else {
         alert('Critique failed: ' + data.error);
       }
@@ -403,6 +525,52 @@ const AIConsensusComplete: React.FC = () => {
       alert('Critique error: ' + error);
     } finally {
       setLoadingPreviousCritique(prev => ({...prev, [exchangeKey]: false}));
+    }
+  };
+
+  const performPreviousSynthesis = async (exchangeIndex: number, exchange: any) => {
+    const exchangeKey = `${exchangeIndex}`;
+    const selectedSet = previousExchangesSelected[exchangeKey] || new Set();
+
+    if (selectedSet.size !== 2) {
+      alert('Please select exactly 2 responses to combine');
+      return;
+    }
+
+    const selectedIndices = Array.from(selectedSet);
+    const response1 = exchange.responses[selectedIndices[0]];
+    const response2 = exchange.responses[selectedIndices[1]];
+
+    setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: true}));
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_query: exchange.question,
+          llm1_name: response1.service,
+          llm1_response: response1.content,
+          llm2_name: response2.service,
+          llm2_response: response2.content,
+          chat_history: ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setPreviousSynthesisResults(prev => ({...prev, [exchangeKey]: data.synthesis}));
+        setPreviousSynthesisProviders(prev => ({...prev, [exchangeKey]: data.synthesis_provider || 'Unknown'}));
+        setPreviousSynthesisExpanded(prev => ({...prev, [exchangeKey]: true})); // Default to expanded
+      } else {
+        alert('Synthesis failed: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Synthesis error:', error);
+      alert('Synthesis error: ' + error);
+    } finally {
+      setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: false}));
     }
   };
 
@@ -432,18 +600,35 @@ const AIConsensusComplete: React.FC = () => {
     });
   };
 
+  // Copy to clipboard function
+  const copyToClipboard = async (text: string, itemId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedItems(prev => ({ ...prev, [itemId]: true }));
+
+      // Reset copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedItems(prev => ({ ...prev, [itemId]: false }));
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+      alert('Failed to copy to clipboard');
+    }
+  };
+
   const togglePreviousExpanded = (exchangeIndex: number, responseIndex: number) => {
     const key = `${exchangeIndex}`;
     setPreviousExchangesExpanded(prev => {
       const newState = { ...prev };
-      if (!newState[key]) newState[key] = new Set();
+      const currentSet = newState[key] || new Set();
 
-      const newSet = new Set(newState[key]);
-      if (newSet.has(responseIndex)) {
-        newSet.delete(responseIndex);
-      } else {
+      // Create new Set: if clicking the same one that's expanded, collapse it
+      // Otherwise, only expand the clicked one (collapse others)
+      const newSet = new Set<number>();
+      if (!currentSet.has(responseIndex)) {
         newSet.add(responseIndex);
       }
+
       newState[key] = newSet;
       return newState;
     });
@@ -651,23 +836,40 @@ const AIConsensusComplete: React.FC = () => {
                             >
                               {preferredSet.has(responseIndex) ? 'Preferred This' : 'Prefer'}
                             </button>
+                            <button
+                              onClick={() => copyToClipboard(response.content || '', `prev-${exchangeIndex}-${responseIndex}`)}
+                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1"
+                              title="Copy to clipboard"
+                            >
+                              {copiedItems[`prev-${exchangeIndex}-${responseIndex}`] ? (
+                                <>
+                                  <Check size={14} className="text-green-600" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={14} />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
                           </div>
                         )}
 
                         {/* Response Content */}
                         <div className={`text-gray-800 leading-relaxed ${
                           expandedSet.has(responseIndex)
-                            ? 'max-h-96 overflow-y-auto border-t border-gray-100 pt-4 pr-2'
-                            : 'max-h-40 overflow-y-auto relative'
+                            ? 'max-h-[600px] overflow-y-auto border-t border-gray-100 pt-4 pr-2'
+                            : ''
                         }`}>
                           {response.success ? (
                             expandedSet.has(responseIndex) ? (
                               <MarkdownRenderer content={response.content || ''} webSearchSources={exchange.webSearchSources} />
                             ) : (
-                              <div>
-                                <MarkdownRenderer content={response.synopsis || (response.content?.substring(0, 300) || '')} webSearchSources={exchange.webSearchSources} />
-                                {(!response.synopsis && response.content && response.content.length > 300) && (
-                                  <div className="text-gray-500 text-sm mt-2 italic">Click "+Expand" to read more...</div>
+                              <div className="relative">
+                                <MarkdownRenderer content={response.synopsis || response.content || ''} webSearchSources={exchange.webSearchSources} />
+                                {!response.synopsis && response.content && response.content.length > 500 && (
+                                  <div className="mt-2 text-gray-500 text-sm italic">Click "+Expand" to read the full response...</div>
                                 )}
                               </div>
                             )
@@ -688,13 +890,22 @@ const AIConsensusComplete: React.FC = () => {
                         </h3>
 
                         {selectedSet.size === 2 ? (
-                          <button
-                            onClick={() => performPreviousCritique(exchangeIndex, exchange)}
-                            disabled={loadingPreviousCritique[`${exchangeIndex}`]}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition-colors font-medium"
-                          >
-                            {loadingPreviousCritique[`${exchangeIndex}`] ? 'Analyzing...' : 'Compare'}
-                          </button>
+                          <div className="flex gap-3 justify-center">
+                            <button
+                              onClick={() => performPreviousCritique(exchangeIndex, exchange)}
+                              disabled={loadingPreviousCritique[`${exchangeIndex}`]}
+                              className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition-colors font-medium"
+                            >
+                              {loadingPreviousCritique[`${exchangeIndex}`] ? 'Analyzing...' : '⚖️ Compare'}
+                            </button>
+                            <button
+                              onClick={() => performPreviousSynthesis(exchangeIndex, exchange)}
+                              disabled={loadingPreviousSynthesis[`${exchangeIndex}`]}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
+                            >
+                              {loadingPreviousSynthesis[`${exchangeIndex}`] ? 'Combining...' : '🔗 Combine'}
+                            </button>
+                          </div>
                         ) : (
                           <p className="text-purple-700 text-sm">Select 2 responses to get AI-powered analysis</p>
                         )}
@@ -702,18 +913,97 @@ const AIConsensusComplete: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Critique Result for previous exchange */}
-                  {previousCritiqueResults[`${exchangeIndex}`] && (
+                  {/* Critique Result for previous exchange - from archived or generated */}
+                  {(exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`]) && (
                     <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
                       <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
-                        {previousCritiqueProviders[`${exchangeIndex}`] && (
-                          <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                            Analyzed by: {previousCritiqueProviders[`${exchangeIndex}`]}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setPreviousCritiqueExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
+                            className="text-purple-900 hover:text-purple-700 transition-colors"
+                          >
+                            {previousCritiqueExpanded[`${exchangeIndex}`] !== false ? '▼' : '▶'}
+                          </button>
+                          <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => copyToClipboard(
+                              exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`],
+                              `prev-critique-${exchangeIndex}`
+                            )}
+                            className="px-2 py-1 text-xs border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1"
+                            title="Copy critique to clipboard"
+                          >
+                            {copiedItems[`prev-critique-${exchangeIndex}`] ? (
+                              <>
+                                <Check size={12} className="text-green-600" />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={12} />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                          {(exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]) && (
+                            <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                              Analyzed by: {exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <MarkdownRenderer content={previousCritiqueResults[`${exchangeIndex}`]} className="text-gray-700" />
+                      {previousCritiqueExpanded[`${exchangeIndex}`] !== false && (
+                        <MarkdownRenderer content={exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`]} className="text-gray-700" />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Synthesis Result for previous exchange - from archived or generated */}
+                  {(exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`]) && (
+                    <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
+                      <div className="flex justify-between items-center mb-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setPreviousSynthesisExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
+                            className="text-blue-900 hover:text-blue-700 transition-colors"
+                          >
+                            {previousSynthesisExpanded[`${exchangeIndex}`] !== false ? '▼' : '▶'}
+                          </button>
+                          <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => copyToClipboard(
+                              exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`],
+                              `prev-synthesis-${exchangeIndex}`
+                            )}
+                            className="px-2 py-1 text-xs border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                            title="Copy synthesis to clipboard"
+                          >
+                            {copiedItems[`prev-synthesis-${exchangeIndex}`] ? (
+                              <>
+                                <Check size={12} className="text-green-600" />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={12} />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                          {(exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]) && (
+                            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                              Synthesized by: {exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {previousSynthesisExpanded[`${exchangeIndex}`] !== false && (
+                        <MarkdownRenderer content={exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`]} className="text-gray-700" />
+                      )}
                     </div>
                   )}
                 </div>
@@ -784,19 +1074,43 @@ const AIConsensusComplete: React.FC = () => {
                         >
                           {preferredResponses.has(index) ? 'Preferred This' : 'Prefer'}
                         </button>
+                        <button
+                          onClick={() => copyToClipboard(response.content || '', `current-${index}`)}
+                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 ml-auto"
+                          title="Copy to clipboard"
+                        >
+                          {copiedItems[`current-${index}`] ? (
+                            <>
+                              <Check size={14} className="text-green-600" />
+                              <span>Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={14} />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
 
                   {/* Response Content */}
                   <div className={`text-gray-800 leading-relaxed ${
-                    expandedResponses.has(index) ? 'max-h-80 overflow-y-auto border-t border-gray-100 pt-4' : 'max-h-32 overflow-hidden'
+                    expandedResponses.has(index)
+                      ? 'max-h-[600px] overflow-y-auto border-t border-gray-100 pt-4 pr-2'
+                      : ''
                   }`}>
                     {response.success ? (
                       expandedResponses.has(index) ? (
                         <MarkdownRenderer content={response.content || ''} webSearchSources={webSearchSources} />
                       ) : (
-                        <MarkdownRenderer content={response.synopsis || (response.content?.substring(0, 200) + '...')} webSearchSources={webSearchSources} />
+                        <div className="relative">
+                          <MarkdownRenderer content={response.synopsis || response.content || ''} webSearchSources={webSearchSources} />
+                          {!response.synopsis && response.content && response.content.length > 500 && (
+                            <div className="mt-2 text-gray-500 text-sm italic">Click "+Expand" to read the full response...</div>
+                          )}
+                        </div>
                       )
                     ) : (
                       <div className="text-red-600">Error: {response.error}</div>
@@ -817,13 +1131,22 @@ const AIConsensusComplete: React.FC = () => {
               </h3>
 
               {selectedForCritique.size === 2 ? (
-                <button
-                  onClick={performCritique}
-                  disabled={loadingCritique}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition-colors font-medium"
-                >
-                  {loadingCritique ? 'Analyzing...' : 'Compare'}
-                </button>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={performCritique}
+                    disabled={loadingCritique}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition-colors font-medium"
+                  >
+                    {loadingCritique ? 'Analyzing...' : '⚖️ Compare'}
+                  </button>
+                  <button
+                    onClick={performSynthesis}
+                    disabled={loadingSynthesis}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
+                  >
+                    {loadingSynthesis ? 'Combining...' : '🔗 Combine'}
+                  </button>
+                </div>
               ) : (
                 <p className="text-purple-700 text-sm">Select 2 responses to get AI-powered analysis</p>
               )}
@@ -835,14 +1158,87 @@ const AIConsensusComplete: React.FC = () => {
         {critiqueResult && (
           <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
-              {critiqueProvider && (
-                <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                  Analyzed by: {critiqueProvider}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCritiqueExpanded(!critiqueExpanded)}
+                  className="text-purple-900 hover:text-purple-700 transition-colors"
+                >
+                  {critiqueExpanded ? '▼' : '▶'}
+                </button>
+                <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => copyToClipboard(critiqueResult, 'current-critique')}
+                  className="px-2 py-1 text-xs border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1"
+                  title="Copy critique to clipboard"
+                >
+                  {copiedItems['current-critique'] ? (
+                    <>
+                      <Check size={12} className="text-green-600" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+                {critiqueProvider && (
+                  <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                    Analyzed by: {critiqueProvider}
+                  </span>
+                )}
+              </div>
             </div>
-            <MarkdownRenderer content={critiqueResult} className="text-gray-700" />
+            {critiqueExpanded && (
+              <MarkdownRenderer content={critiqueResult} className="text-gray-700" />
+            )}
+          </div>
+        )}
+
+        {/* Synthesis Result */}
+        {synthesisResult && (
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSynthesisExpanded(!synthesisExpanded)}
+                  className="text-blue-900 hover:text-blue-700 transition-colors"
+                >
+                  {synthesisExpanded ? '▼' : '▶'}
+                </button>
+                <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => copyToClipboard(synthesisResult, 'current-synthesis')}
+                  className="px-2 py-1 text-xs border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                  title="Copy synthesis to clipboard"
+                >
+                  {copiedItems['current-synthesis'] ? (
+                    <>
+                      <Check size={12} className="text-green-600" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+                {synthesisProvider && (
+                  <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                    Synthesized by: {synthesisProvider}
+                  </span>
+                )}
+              </div>
+            </div>
+            {synthesisExpanded && (
+              <MarkdownRenderer content={synthesisResult} className="text-gray-700" />
+            )}
           </div>
         )}
 

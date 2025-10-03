@@ -50,19 +50,25 @@ class ClaudeService(BaseAIService):
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(self.BASE_URL, headers=headers, json=payload) as response:
-                    response_data = await response.json()
-                    
+                    # Try to parse JSON response
+                    try:
+                        response_data = await response.json()
+                    except aiohttp.ContentTypeError:
+                        # Handle non-JSON responses (errors)
+                        error_text = await response.text()
+                        return self.format_error_response(Exception(f"Claude API error (status {response.status}): {error_text[:200]}"))
+
                     if response.status != 200:
                         error_msg = response_data.get('error', {}).get('message', 'Unknown error')
                         return self.format_error_response(Exception(f"Claude API error: {error_msg}"))
-                    
+
                     content = response_data.get('content', [{}])[0].get('text', '')
                     metadata = {
                         'model': self.model,
                         'usage': response_data.get('usage', {}),
                         'stop_reason': response_data.get('stop_reason')
                     }
-                    
+
                     return self.format_success_response(content, metadata)
                     
         except Exception as e:
