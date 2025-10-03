@@ -188,7 +188,7 @@ graph TB
 
 6. **Start backend server**
    ```bash
-   python3 manage.py runserver 8001
+   python3 manage.py runserver 8000
    ```
 
 ### Frontend Setup

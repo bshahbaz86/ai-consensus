@@ -18,7 +18,7 @@ I have successfully recovered and restored the original AI Consensus frontend wi
 ### 🧠 **Advanced AI Features**
 - ✅ **Expand/Collapse Buttons**: Toggle between synopsis and full response
 - ✅ **Select for AI Critic**: Choose responses for comparison
-- ✅ **AI Critique & Comparison**: Side-by-side analysis using `/api/v1/critique/compare/`
+- ✅ **AI Analysis**: Side-by-side analysis using `/api/v1/critique/compare/`
 - ✅ **Preferred This**: Keep only the selected response
 - ✅ **Smart Response Management**: Proper state management for all interactions
 
@@ -152,7 +152,7 @@ I have successfully recovered and restored the original AI Consensus frontend wi
 
 ### **Advanced Features**
 - [ ] Click "+Expand" to see full responses
-- [ ] Click "Select for AI Critic" on 2 responses
+- [ ] Click "Select for " on 2 responses
 - [ ] Click "Compare Responses" to get AI critique
 - [ ] Click "Preferred This" to keep only one response
 - [ ] Test with web search enabled

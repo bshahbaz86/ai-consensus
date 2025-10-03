@@ -255,7 +255,7 @@ def test_ai_services(request):
                 gemini_service = AIServiceFactory.create_service(
                     'gemini',
                     settings.GEMINI_API_KEY,
-                    model='gemini-flash-latest'
+                    model='gemini-2.0-flash-exp'
                 )
 
                 # Prepare context with web search and chat history if available
@@ -294,7 +294,7 @@ def test_ai_services(request):
                                 gemini_response['content'],
                                 'gemini',
                                 settings.GEMINI_API_KEY,
-                                'gemini-flash-latest'
+                                'gemini-2.0-flash-exp'
                             )
                         )
                     
@@ -331,6 +331,137 @@ def test_ai_services(request):
             }
         })
         
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def combine_responses(request):
+    """
+    Combine two LLM responses into a unified synthesis.
+    """
+    try:
+        data = json.loads(request.body)
+        user_query = data.get('user_query', '')
+        llm1_name = data.get('llm1_name', '')
+        llm1_response = data.get('llm1_response', '')
+        llm2_name = data.get('llm2_name', '')
+        llm2_response = data.get('llm2_response', '')
+        chat_history = data.get('chat_history', '')
+
+        if not all([user_query, llm1_name, llm1_response, llm2_name, llm2_response]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+
+        # Create the synthesis prompt
+        synthesis_prompt = f"""Role:
+You are tasked with synthesizing information from multiple LLM responses into a single, cohesive output. Your job is to surface the shared insights, highlight important differences, and present a unified narrative that is clear, accurate, and professional.
+
+Instructions:
+
+1. Analyze the Sources
+   - Carefully read each provided response.
+   - Extract the key arguments, supporting evidence, tone, and framing from each.
+
+2. Identify Common Ground
+   - Determine the central ideas, concepts, or themes that appear across most or all responses.
+   - Emphasize these shared elements as the backbone of your synthesis.
+
+3. Acknowledge Divergences
+   - Identify significant points of disagreement, alternative perspectives, or differences in emphasis.
+   - Briefly note these divergences, and if relevant, suggest why they may exist (e.g., different assumptions, focus areas, or contexts).
+
+4. Integrate & Re-Present
+   - Write a new, unified response that:
+     * Clearly articulates the common themes.
+     * Integrates unique insights that add depth and nuance.
+     * Acknowledges divergences without letting them overshadow consensus.
+   - Use consistent, professional tone and logical flow.
+   - Reinforce the shared themes with related language (e.g., if "efficiency" is a theme, also use "streamlined," "optimized," "productive").
+
+5. Structure the Output
+   - Part 1: Common Themes – Outline and explain the main overlapping ideas and why they matter.
+   - Part 2: Diverse Perspectives – Incorporate distinctive viewpoints, showing how they enrich or expand the common ground.
+   - Part 3: Unified Narrative – Blend both common and divergent insights into a coherent conclusion that leaves the reader with a clear, comprehensive understanding.
+
+Format Requirements:
+- Approx. 500–700 words.
+- Use clear headings or smooth paragraph transitions to organize the response.
+- When appropriate, cite the originating source in parentheses (e.g., "({llm1_name})" or "({llm2_name})") to maintain transparency.
+
+Original User Query: {user_query}
+
+Chat History: {chat_history}
+
+Sources:
+
+Source 1 ({llm1_name}):
+{llm1_response}
+
+Source 2 ({llm2_name}):
+{llm2_response}
+
+Please provide your synthesis now:"""
+
+        # Use Claude for synthesis (or OpenAI as fallback)
+        synthesis_service = None
+        synthesis_provider = None
+
+        # Try Claude first for high-quality synthesis
+        if settings.CLAUDE_API_KEY:
+            try:
+                synthesis_service = AIServiceFactory.create_service(
+                    'claude',
+                    settings.CLAUDE_API_KEY,
+                    model='claude-sonnet-4-20250514'
+                )
+                synthesis_provider = 'Claude'
+            except Exception:
+                synthesis_service = None
+
+        # Fallback to OpenAI if Claude unavailable
+        if not synthesis_service and settings.OPENAI_API_KEY:
+            synthesis_service = AIServiceFactory.create_service(
+                'openai',
+                settings.OPENAI_API_KEY,
+                model='gpt-4o'
+            )
+            synthesis_provider = 'OpenAI'
+
+        if synthesis_service:
+            # Run async function
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                synthesis_response = loop.run_until_complete(
+                    synthesis_service.generate_response(synthesis_prompt)
+                )
+            finally:
+                loop.close()
+
+            if synthesis_response['success']:
+                return JsonResponse({
+                    'success': True,
+                    'synthesis': synthesis_response['content'],
+                    'synthesis_provider': synthesis_provider
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': f"Synthesis generation failed: {synthesis_response.get('error', 'Unknown error')}"
+                }, status=500)
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'No AI service available for synthesis functionality (configure Claude or OpenAI API keys)'
+            }, status=500)
+
     except Exception as e:
         return JsonResponse({
             'success': False,

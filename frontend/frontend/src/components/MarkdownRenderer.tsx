@@ -21,21 +21,29 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
 
   // Split content into main content and sources
   const splitContent = (text: string) => {
-    // Look for sources section (various patterns)
+    // Look for sources section (various patterns) - ONLY at end of document
+    // Must be preceded by blank lines to be considered a sources section
     const sourcesPatterns = [
-      /(\*\*Sources?\*\*[\s\S]*$)/i,
-      /(---[\s\S]*Sources?[\s\S]*$)/i,
-      /(Sources?:[\s\S]*$)/i,
-      /(References?:[\s\S]*$)/i
+      /\n\n(\*\*Sources?\*\*[\s\S]*$)/i,
+      /\n\n(---[\s]*\n+Sources?[\s\S]*$)/i,
+      /\n\n(Sources?:\s*\n+[\s\S]*$)/i,
+      /\n\n(References?:\s*\n+[\s\S]*$)/i
     ];
 
-    // Check for formal sources section first
+    // Check for formal sources section first - only if it appears to be a dedicated section
     for (const pattern of sourcesPatterns) {
       const match = text.match(pattern);
       if (match) {
-        const mainContent = text.substring(0, match.index);
+        // Additional validation: sources section should contain numbered lists or URLs
         const sourcesContent = match[1];
-        return { mainContent, sourcesContent };
+        const hasNumberedList = /^\d+\./m.test(sourcesContent);
+        const hasUrls = /https?:\/\//i.test(sourcesContent);
+
+        // Only treat as sources section if it looks like actual references
+        if (hasNumberedList || hasUrls) {
+          const mainContent = text.substring(0, match.index);
+          return { mainContent, sourcesContent };
+        }
       }
     }
 

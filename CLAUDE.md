@@ -130,3 +130,12 @@ config/
 - **Structured Logging**: Implement structured logging for API monitoring and debugging
 - **Request/Response Logging**: Log API calls with execution time, user info, and response status
 - **Performance Monitoring**: Log slow queries and performance bottlenecks
+
+### E2E Testing
+- **Whenever you make code changes** test the front-end app end to end from toggling off openai, launching the app, entering a user query, returning responses, preferring messages, and finally continuing conversations. 
+- **Take pictures and verify functionality every step along the way** Make sure openai llm is turned off as such llm calls cost money saving overall testing cost, meaning test with gemini and claude only.
+- **Make sure this end to end testing takes place at http://localhost:3000/**
+
+### GITHUB
+- **Contributions** When pushing changes to github, do not mention Claude contributions. Code pushes should be attributed to me, not Claude.
+- **README** befor pushing changes to github, make sure README file is updated with the latest and greatest info. Any developer should be able to get this app up and running on his/her mac by following set up steps in the README file.
