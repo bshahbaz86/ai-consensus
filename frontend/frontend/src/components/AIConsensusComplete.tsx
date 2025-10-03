@@ -224,12 +224,12 @@ const AIConsensusComplete: React.FC = () => {
   };
 
   // Helper function to save a message to the database
-  const saveMessage = async (role: 'user' | 'assistant' | 'system', content: string, metadata: any = {}) => {
-    if (!currentConversationId) return;
+  const saveMessage = async (role: 'user' | 'assistant' | 'system', content: string, metadata: any = {}): Promise<boolean> => {
+    if (!currentConversationId) return false;
 
     try {
       // Using direct fetch since we don't have a messages endpoint in apiService yet
-      await fetch(`http://localhost:8000/api/v1/conversations/${currentConversationId}/messages/`, {
+      const response = await fetch(`http://localhost:8000/api/v1/conversations/${currentConversationId}/messages/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -239,8 +239,10 @@ const AIConsensusComplete: React.FC = () => {
           tokens_used: Math.ceil(content.length / 4) // Rough token estimate
         })
       });
+      return response.ok;
     } catch (error) {
       console.error('Failed to save message:', error);
+      return false;
     }
   };
 
@@ -325,6 +327,11 @@ const AIConsensusComplete: React.FC = () => {
     await updateConversationTitle(currentQuestion);
     setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
 
+    // Trigger conversation list refresh after first message (so it appears in sidebar)
+    if (conversationHistory.length === 0) {
+      setConversationRefreshTrigger(prev => prev + 1);
+    }
+
     try {
       // Build chat history string for API
       const chatHistoryString = conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n');
@@ -351,16 +358,23 @@ const AIConsensusComplete: React.FC = () => {
           const successfulResults = data.results.filter((r: any) => r.success);
 
           // Save each AI response to the database
+          let savedSuccessfully = false;
           for (const result of successfulResults) {
-            await saveMessage('assistant', result.content, {
+            const saved = await saveMessage('assistant', result.content, {
               service: result.service,
               synopsis: result.synopsis,
               web_search_sources: webSearchEnabled ? data.web_search_sources : undefined
             });
+            if (saved) savedSuccessfully = true;
           }
 
           const newResponses = successfulResults.map((result: any) => ({ role: result.service, content: result.content }));
           setConversationHistory(prev => [...prev, ...newResponses]);
+
+          // Refresh conversation list after saving messages
+          if (savedSuccessfully) {
+            setConversationRefreshTrigger(prev => prev + 1);
+          }
         }
       } else {
         console.error('API Error:', data.error);

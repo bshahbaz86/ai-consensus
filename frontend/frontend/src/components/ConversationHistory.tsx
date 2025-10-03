@@ -229,9 +229,9 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
       };
 
       const response = await apiService.getConversations(params);
-      // Filter out conversations with zero messages
+      // Filter out conversations with zero messages, but keep the current active conversation
       const filteredConversations = response.results.filter(
-        (conv) => conv.total_messages > 0
+        (conv) => conv.total_messages > 0 || conv.id === currentConversationId
       );
       setConversations(filteredConversations);
     } catch (err) {
@@ -240,7 +240,7 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearchQuery, searchParams]);
+  }, [debouncedSearchQuery, searchParams, currentConversationId]);
 
   useEffect(() => {
     loadConversations();
