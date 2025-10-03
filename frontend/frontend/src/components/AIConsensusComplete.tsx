@@ -124,7 +124,7 @@ const AIConsensusComplete: React.FC = () => {
         setConversationHistory(history);
 
         // Reconstruct conversationExchanges from messages
-        const exchanges: Array<{
+        const exchangesMap = new Map<string, {
           question: string;
           responses: AIResponse[];
           webSearchSources: WebSearchSource[];
@@ -132,47 +132,52 @@ const AIConsensusComplete: React.FC = () => {
           critiqueProvider?: string;
           synthesisResult?: string;
           synthesisProvider?: string;
-        }> = [];
+        }>();
 
-        let currentExchange: any = null;
+        let currentQuestion: string | null = null;
 
         for (const msg of fullConversation.messages) {
           if (msg.role === 'user') {
-            // Start a new exchange
-            if (currentExchange && currentExchange.responses.length > 0) {
-              exchanges.push(currentExchange);
+            currentQuestion = msg.content;
+            // Create exchange entry if it doesn't exist
+            if (!exchangesMap.has(currentQuestion)) {
+              exchangesMap.set(currentQuestion, {
+                question: currentQuestion,
+                responses: [],
+                webSearchSources: []
+              });
             }
-            currentExchange = {
-              question: msg.content,
-              responses: [],
-              webSearchSources: []
-            };
-          } else if (msg.role === 'assistant' && currentExchange) {
-            // Add assistant response to current exchange
+          } else if (msg.role === 'assistant' && currentQuestion && exchangesMap.has(currentQuestion)) {
+            // Add assistant response to the current question's exchange
             const metadata = msg.metadata || {};
             const service = metadata.service || 'Unknown';
+            const exchange = exchangesMap.get(currentQuestion)!;
 
-            currentExchange.responses.push({
-              service: service,
-              content: msg.content,
-              success: true,
-              synopsis: metadata.synopsis || '',
-              provider: service
-            });
+            // Check if this service response already exists to avoid duplicates
+            const existingResponse = exchange.responses.find(r => r.service === service);
+            if (!existingResponse) {
+              exchange.responses.push({
+                service: service,
+                content: msg.content,
+                success: true,
+                synopsis: metadata.synopsis || ''
+              });
 
-            // Extract web search sources if available
-            if (metadata.web_search_sources && metadata.web_search_sources.length > 0) {
-              currentExchange.webSearchSources = metadata.web_search_sources;
+              // Extract web search sources if available
+              if (metadata.web_search_sources && metadata.web_search_sources.length > 0) {
+                exchange.webSearchSources = metadata.web_search_sources;
+              }
             }
           }
         }
 
-        // Push the last exchange if it exists
-        if (currentExchange && currentExchange.responses.length > 0) {
-          exchanges.push(currentExchange);
-        }
+        // Convert map to array and filter out exchanges without responses
+        const exchanges = Array.from(exchangesMap.values()).filter(ex => ex.responses.length > 0);
 
         setConversationExchanges(exchanges);
+
+        // Clear the question input
+        setQuestion('');
       } else {
         setConversationHistory([]);
         setConversationExchanges([]);
@@ -209,6 +214,9 @@ const AIConsensusComplete: React.FC = () => {
       setResponses([]);
       setConversationExchanges([]);
       setCritiqueResult(null);
+      setCritiqueProvider(null);
+      setSynthesisResult(null);
+      setSynthesisProvider(null);
       setExpandedResponses(new Set());
       setSelectedForCritique(new Set());
       setPreferredResponses(new Set());
@@ -429,7 +437,7 @@ const AIConsensusComplete: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_query: question,
+          user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
           llm1_name: response1.service,
           llm1_response: response1.content,
           llm2_name: response2.service,
@@ -826,7 +834,7 @@ const AIConsensusComplete: React.FC = () => {
                           <div className="flex gap-2 justify-end mb-4">
                             <button
                               onClick={() => togglePreviousExpanded(exchangeIndex, responseIndex)}
-                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors text-gray-700"
                             >
                               {expandedSet.has(responseIndex) ? '-Collapse' : '+Expand'}
                             </button>
@@ -838,7 +846,7 @@ const AIConsensusComplete: React.FC = () => {
                                   : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                               }`}
                             >
-                              {selectedSet.has(responseIndex) ? 'Selected for Analysis' : 'Select'}
+                              {selectedSet.has(responseIndex) ? 'Selected' : 'Select'}
                             </button>
                             <button
                               onClick={() => togglePreviousPreferred(exchangeIndex, responseIndex)}
@@ -848,11 +856,11 @@ const AIConsensusComplete: React.FC = () => {
                                   : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                               }`}
                             >
-                              {preferredSet.has(responseIndex) ? 'Preferred This' : 'Prefer'}
+                              {preferredSet.has(responseIndex) ? 'Preferred' : 'Prefer'}
                             </button>
                             <button
                               onClick={() => copyToClipboard(response.content || '', `prev-${exchangeIndex}-${responseIndex}`)}
-                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1"
+                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 text-gray-700"
                               title="Copy to clipboard"
                             >
                               {copiedItems[`prev-${exchangeIndex}-${responseIndex}`] ? (
@@ -931,39 +939,37 @@ const AIConsensusComplete: React.FC = () => {
                   {(exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`]) && (
                     <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
                       <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setPreviousCritiqueExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
-                            className="text-purple-900 hover:text-purple-700 transition-colors"
+                            className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors text-purple-900"
                           >
-                            {previousCritiqueExpanded[`${exchangeIndex}`] !== false ? '▼' : '▶'}
+                            {previousCritiqueExpanded[`${exchangeIndex}`] !== false ? '-Collapse' : '+Expand'}
                           </button>
-                          <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
-                        </div>
-                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => copyToClipboard(
                               exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`],
                               `prev-critique-${exchangeIndex}`
                             )}
-                            className="px-2 py-1 text-xs border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1"
+                            className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1 text-purple-900"
                             title="Copy critique to clipboard"
                           >
                             {copiedItems[`prev-critique-${exchangeIndex}`] ? (
                               <>
-                                <Check size={12} className="text-green-600" />
+                                <Check size={14} className="text-green-600" />
                                 <span>Copied</span>
                               </>
                             ) : (
                               <>
-                                <Copy size={12} />
+                                <Copy size={14} />
                                 <span>Copy</span>
                               </>
                             )}
                           </button>
                           {(exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]) && (
                             <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                              Analyzed by: {exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]}
+                              Compared by: {exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]}
                             </span>
                           )}
                         </div>
@@ -978,39 +984,37 @@ const AIConsensusComplete: React.FC = () => {
                   {(exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`]) && (
                     <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
                       <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setPreviousSynthesisExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
-                            className="text-blue-900 hover:text-blue-700 transition-colors"
+                            className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors text-blue-900"
                           >
-                            {previousSynthesisExpanded[`${exchangeIndex}`] !== false ? '▼' : '▶'}
+                            {previousSynthesisExpanded[`${exchangeIndex}`] !== false ? '-Collapse' : '+Expand'}
                           </button>
-                          <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
-                        </div>
-                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => copyToClipboard(
                               exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`],
                               `prev-synthesis-${exchangeIndex}`
                             )}
-                            className="px-2 py-1 text-xs border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                            className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-blue-900"
                             title="Copy synthesis to clipboard"
                           >
                             {copiedItems[`prev-synthesis-${exchangeIndex}`] ? (
                               <>
-                                <Check size={12} className="text-green-600" />
+                                <Check size={14} className="text-green-600" />
                                 <span>Copied</span>
                               </>
                             ) : (
                               <>
-                                <Copy size={12} />
+                                <Copy size={14} />
                                 <span>Copy</span>
                               </>
                             )}
                           </button>
                           {(exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]) && (
                             <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                              Synthesized by: {exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]}
+                              Combined by: {exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]}
                             </span>
                           )}
                         </div>
@@ -1064,7 +1068,7 @@ const AIConsensusComplete: React.FC = () => {
                       <div className="flex gap-2">
                         <button
                           onClick={() => toggleExpanded(index)}
-                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors text-gray-700"
                         >
                           {expandedResponses.has(index) ? '-Collapse' : '+Expand'}
                         </button>
@@ -1076,7 +1080,7 @@ const AIConsensusComplete: React.FC = () => {
                               : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                           }`}
                         >
-                          {selectedForCritique.has(index) ? 'Selected for Analysis' : 'Select'}
+                          {selectedForCritique.has(index) ? 'Selected' : 'Select'}
                         </button>
                         <button
                           onClick={() => togglePreference(index)}
@@ -1086,11 +1090,11 @@ const AIConsensusComplete: React.FC = () => {
                               : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                           }`}
                         >
-                          {preferredResponses.has(index) ? 'Preferred This' : 'Prefer'}
+                          {preferredResponses.has(index) ? 'Preferred' : 'Prefer'}
                         </button>
                         <button
                           onClick={() => copyToClipboard(response.content || '', `current-${index}`)}
-                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 ml-auto"
+                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 ml-auto text-gray-700"
                           title="Copy to clipboard"
                         >
                           {copiedItems[`current-${index}`] ? (
@@ -1151,7 +1155,7 @@ const AIConsensusComplete: React.FC = () => {
                     disabled={loadingCritique}
                     className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition-colors font-medium"
                   >
-                    {loadingCritique ? 'Analyzing...' : '⚖️ Compare'}
+                    {loadingCritique ? 'Comparing...' : '⚖️ Compare'}
                   </button>
                   <button
                     onClick={performSynthesis}
@@ -1172,36 +1176,34 @@ const AIConsensusComplete: React.FC = () => {
         {critiqueResult && (
           <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-purple-900">AI Comparison</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCritiqueExpanded(!critiqueExpanded)}
-                  className="text-purple-900 hover:text-purple-700 transition-colors"
+                  className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors text-purple-900"
                 >
-                  {critiqueExpanded ? '▼' : '▶'}
+                  {critiqueExpanded ? '-Collapse' : '+Expand'}
                 </button>
-                <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
-              </div>
-              <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(critiqueResult, 'current-critique')}
-                  className="px-2 py-1 text-xs border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1"
+                  className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1 text-purple-900"
                   title="Copy critique to clipboard"
                 >
                   {copiedItems['current-critique'] ? (
                     <>
-                      <Check size={12} className="text-green-600" />
+                      <Check size={14} className="text-green-600" />
                       <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy size={12} />
+                      <Copy size={14} />
                       <span>Copy</span>
                     </>
                   )}
                 </button>
                 {critiqueProvider && (
                   <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                    Analyzed by: {critiqueProvider}
+                    Compared by: {critiqueProvider}
                   </span>
                 )}
               </div>
@@ -1216,36 +1218,34 @@ const AIConsensusComplete: React.FC = () => {
         {synthesisResult && (
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-blue-900">AI Combination</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSynthesisExpanded(!synthesisExpanded)}
-                  className="text-blue-900 hover:text-blue-700 transition-colors"
+                  className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors text-blue-900"
                 >
-                  {synthesisExpanded ? '▼' : '▶'}
+                  {synthesisExpanded ? '-Collapse' : '+Expand'}
                 </button>
-                <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
-              </div>
-              <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(synthesisResult, 'current-synthesis')}
-                  className="px-2 py-1 text-xs border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                  className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-blue-900"
                   title="Copy synthesis to clipboard"
                 >
                   {copiedItems['current-synthesis'] ? (
                     <>
-                      <Check size={12} className="text-green-600" />
+                      <Check size={14} className="text-green-600" />
                       <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy size={12} />
+                      <Copy size={14} />
                       <span>Copy</span>
                     </>
                   )}
                 </button>
                 {synthesisProvider && (
                   <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                    Synthesized by: {synthesisProvider}
+                    Combined by: {synthesisProvider}
                   </span>
                 )}
               </div>
