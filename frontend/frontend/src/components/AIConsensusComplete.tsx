@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Menu, Globe, Copy, Check } from 'lucide-react';
+import { X, Plus, Menu, Globe, Copy, Check, Star } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
@@ -41,6 +41,9 @@ const AIConsensusComplete: React.FC = () => {
   // Textarea ref for height reset
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Ref to prevent duplicate conversation creation in StrictMode
+  const conversationInitialized = useRef(false);
+
   // Conversation tracking for chat history
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
@@ -75,17 +78,33 @@ const AIConsensusComplete: React.FC = () => {
   const [previousSynthesisProviders, setPreviousSynthesisProviders] = useState<{[key: string]: string}>({});
   const [loadingPreviousSynthesis, setLoadingPreviousSynthesis] = useState<{[key: string]: boolean}>({});
 
+  // Cross-Reflection state
+  const [crossReflectionResults, setCrossReflectionResults] = useState<AIResponse[]>([]);
+  const [loadingCrossReflection, setLoadingCrossReflection] = useState(false);
+  const [previousCrossReflectionResults, setPreviousCrossReflectionResults] = useState<{[key: string]: AIResponse[]}>({});
+  const [loadingPreviousCrossReflection, setLoadingPreviousCrossReflection] = useState<{[key: string]: boolean}>({});
+  const [expandedCrossReflections, setExpandedCrossReflections] = useState<Set<number>>(new Set());
+  const [previousExpandedCrossReflections, setPreviousExpandedCrossReflections] = useState<{[key: string]: Set<number>}>({});
+  const [preferredCrossReflections, setPreferredCrossReflections] = useState<Set<number>>(new Set());
+  const [previousPreferredCrossReflections, setPreviousPreferredCrossReflections] = useState<{[key: string]: Set<number>}>({});
+
   // Expand/Collapse state for analysis results
   const [critiqueExpanded, setCritiqueExpanded] = useState(true);
   const [synthesisExpanded, setSynthesisExpanded] = useState(true);
+  const [crossReflectionExpanded, setCrossReflectionExpanded] = useState(true);
   const [previousCritiqueExpanded, setPreviousCritiqueExpanded] = useState<{[key: string]: boolean}>({});
   const [previousSynthesisExpanded, setPreviousSynthesisExpanded] = useState<{[key: string]: boolean}>({});
+  const [previousCrossReflectionExpanded, setPreviousCrossReflectionExpanded] = useState<{[key: string]: boolean}>({});
 
   // Copy state tracking
   const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
 
   // Initialize conversation on component mount
   useEffect(() => {
+    // Prevent duplicate initialization in React StrictMode
+    if (conversationInitialized.current) return;
+    conversationInitialized.current = true;
+
     const initializeConversation = async () => {
       try {
         const newConversation = await apiService.createConversation({
@@ -104,6 +123,7 @@ const AIConsensusComplete: React.FC = () => {
     };
 
     initializeConversation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle conversation selection from sidebar
@@ -124,7 +144,7 @@ const AIConsensusComplete: React.FC = () => {
         setConversationHistory(history);
 
         // Reconstruct conversationExchanges from messages
-        const exchangesMap = new Map<string, {
+        const exchanges: Array<{
           question: string;
           responses: AIResponse[];
           webSearchSources: WebSearchSource[];
@@ -132,31 +152,35 @@ const AIConsensusComplete: React.FC = () => {
           critiqueProvider?: string;
           synthesisResult?: string;
           synthesisProvider?: string;
-        }>();
+        }> = [];
 
-        let currentQuestion: string | null = null;
+        let currentExchange: {
+          question: string;
+          responses: AIResponse[];
+          webSearchSources: WebSearchSource[];
+        } | null = null;
 
         for (const msg of fullConversation.messages) {
           if (msg.role === 'user') {
-            currentQuestion = msg.content;
-            // Create exchange entry if it doesn't exist
-            if (!exchangesMap.has(currentQuestion)) {
-              exchangesMap.set(currentQuestion, {
-                question: currentQuestion,
-                responses: [],
-                webSearchSources: []
-              });
+            // Save previous exchange if it has responses
+            if (currentExchange && currentExchange.responses.length > 0) {
+              exchanges.push(currentExchange);
             }
-          } else if (msg.role === 'assistant' && currentQuestion && exchangesMap.has(currentQuestion)) {
-            // Add assistant response to the current question's exchange
+            // Start a new exchange
+            currentExchange = {
+              question: msg.content,
+              responses: [],
+              webSearchSources: []
+            };
+          } else if (msg.role === 'assistant' && currentExchange) {
+            // Add assistant response to the current exchange
             const metadata = msg.metadata || {};
             const service = metadata.service || 'Unknown';
-            const exchange = exchangesMap.get(currentQuestion)!;
 
             // Check if this service response already exists to avoid duplicates
-            const existingResponse = exchange.responses.find(r => r.service === service);
+            const existingResponse = currentExchange.responses.find(r => r.service === service);
             if (!existingResponse) {
-              exchange.responses.push({
+              currentExchange.responses.push({
                 service: service,
                 content: msg.content,
                 success: true,
@@ -165,14 +189,16 @@ const AIConsensusComplete: React.FC = () => {
 
               // Extract web search sources if available
               if (metadata.web_search_sources && metadata.web_search_sources.length > 0) {
-                exchange.webSearchSources = metadata.web_search_sources;
+                currentExchange.webSearchSources = metadata.web_search_sources;
               }
             }
           }
         }
 
-        // Convert map to array and filter out exchanges without responses
-        const exchanges = Array.from(exchangesMap.values()).filter(ex => ex.responses.length > 0);
+        // Add the final exchange if it has responses
+        if (currentExchange && currentExchange.responses.length > 0) {
+          exchanges.push(currentExchange);
+        }
 
         setConversationExchanges(exchanges);
 
@@ -307,6 +333,11 @@ const AIConsensusComplete: React.FC = () => {
         synthesisProvider: synthesisProvider || undefined,
       }]);
 
+      // Save current cross-reflection results to previous results for the new exchange index
+      if (crossReflectionResults.length > 0) {
+        setPreviousCrossReflectionResults(prev => ({...prev, [`${newExchangeIndex}`]: crossReflectionResults}));
+      }
+
       // Auto-collapse the new exchange by default
       setExchangesCollapsed(prev => {
         const newSet = new Set(prev);
@@ -320,9 +351,12 @@ const AIConsensusComplete: React.FC = () => {
     setCritiqueProvider(null);
     setSynthesisResult(null);
     setSynthesisProvider(null);
+    setCrossReflectionResults([]); // Clear current cross-reflection results
     setSelectedForCritique(new Set());
     setPreferredResponses(new Set());
+    setPreferredCrossReflections(new Set());
     setExpandedResponses(new Set());
+    setExpandedCrossReflections(new Set());
     setQuestion(''); // Clear input immediately
 
     // Reset textarea height
@@ -504,6 +538,65 @@ const AIConsensusComplete: React.FC = () => {
     }
   };
 
+  const performCrossReflection = async () => {
+    if (selectedForCritique.size !== 2) {
+      alert('Please select exactly 2 responses for cross-reflection');
+      return;
+    }
+
+    const selectedIndices = Array.from(selectedForCritique);
+    const response1 = responses[selectedIndices[0]];
+    const response2 = responses[selectedIndices[1]];
+
+    setLoadingCrossReflection(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
+          llm1_name: response1.service,
+          llm1_response: response1.content,
+          llm2_name: response2.service,
+          llm2_response: response2.content,
+          chat_history: ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.reflections) {
+        // Store reflections as AIResponse objects
+        const reflections: AIResponse[] = data.reflections.map((reflection: any) => ({
+          service: `${reflection.service} (reflecting on ${reflection.reflecting_on})`,
+          success: true,
+          content: reflection.content,
+          synopsis: reflection.synopsis
+        }));
+        setCrossReflectionResults(reflections);
+
+        // Save cross-reflection results to conversation history
+        for (const reflection of reflections) {
+          if (reflection.content) {
+            await saveMessage('assistant', reflection.content, { service: reflection.service, type: 'cross-reflection' });
+            setConversationHistory(prev => [...prev, { role: reflection.service, content: reflection.content || '' }]);
+          }
+        }
+
+        // Refresh conversation list after saving
+        setConversationRefreshTrigger(prev => prev + 1);
+      } else {
+        alert('Cross-reflection failed: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Cross-reflection error:', error);
+      alert('Cross-reflection error: ' + error);
+    } finally {
+      setLoadingCrossReflection(false);
+    }
+  };
+
   const performPreviousCritique = async (exchangeIndex: number, exchange: any) => {
     const exchangeKey = `${exchangeIndex}`;
     const selectedSet = previousExchangesSelected[exchangeKey] || new Set();
@@ -593,6 +686,57 @@ const AIConsensusComplete: React.FC = () => {
       alert('Synthesis error: ' + error);
     } finally {
       setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: false}));
+    }
+  };
+
+  const performPreviousCrossReflection = async (exchangeIndex: number, exchange: any) => {
+    const exchangeKey = `${exchangeIndex}`;
+    const selectedSet = previousExchangesSelected[exchangeKey] || new Set();
+
+    if (selectedSet.size !== 2) {
+      alert('Please select exactly 2 responses for cross-reflection');
+      return;
+    }
+
+    const selectedIndices = Array.from(selectedSet);
+    const response1 = exchange.responses[selectedIndices[0]];
+    const response2 = exchange.responses[selectedIndices[1]];
+
+    setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: true}));
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_query: exchange.question,
+          llm1_name: response1.service,
+          llm1_response: response1.content,
+          llm2_name: response2.service,
+          llm2_response: response2.content,
+          chat_history: ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.reflections) {
+        const reflections: AIResponse[] = data.reflections.map((reflection: any) => ({
+          service: `${reflection.service} (reflecting on ${reflection.reflecting_on})`,
+          success: true,
+          content: reflection.content,
+          synopsis: reflection.synopsis
+        }));
+        setPreviousCrossReflectionResults(prev => ({...prev, [exchangeKey]: reflections}));
+        setPreviousCrossReflectionExpanded(prev => ({...prev, [exchangeKey]: true})); // Default to expanded
+      } else {
+        alert('Cross-reflection failed: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Cross-reflection error:', error);
+      alert('Cross-reflection error: ' + error);
+    } finally {
+      setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: false}));
     }
   };
 
@@ -691,6 +835,18 @@ const AIConsensusComplete: React.FC = () => {
       }
       newState[key] = newSet;
       return newState;
+    });
+  };
+
+  const toggleCrossReflectionPreference = (index: number) => {
+    setPreferredCrossReflections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
     });
   };
 
@@ -925,7 +1081,14 @@ const AIConsensusComplete: React.FC = () => {
                               disabled={loadingPreviousSynthesis[`${exchangeIndex}`]}
                               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
                             >
-                              {loadingPreviousSynthesis[`${exchangeIndex}`] ? 'Combining...' : '🔗 Combine'}
+                              {loadingPreviousSynthesis[`${exchangeIndex}`] ? '🔗 Combining...' : '🔗 Combine'}
+                            </button>
+                            <button
+                              onClick={() => performPreviousCrossReflection(exchangeIndex, exchange)}
+                              disabled={loadingPreviousCrossReflection[`${exchangeIndex}`]}
+                              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 transition-colors font-medium"
+                            >
+                              {loadingPreviousCrossReflection[`${exchangeIndex}`] ? '🔀 Cross-reflecting...' : '🔀 Cross-reflect'}
                             </button>
                           </div>
                         ) : (
@@ -1021,6 +1184,107 @@ const AIConsensusComplete: React.FC = () => {
                       </div>
                       {previousSynthesisExpanded[`${exchangeIndex}`] !== false && (
                         <MarkdownRenderer content={exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`]} className="text-gray-700" />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Cross-Reflection Results for previous exchange */}
+                  {previousCrossReflectionResults[`${exchangeIndex}`] && previousCrossReflectionResults[`${exchangeIndex}`].length > 0 && (
+                    <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-semibold text-green-900">AI Cross-Reflection</h3>
+                        <button
+                          onClick={() => setPreviousCrossReflectionExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
+                          className="px-3 py-1 text-sm border border-green-300 rounded hover:bg-green-100 transition-colors text-green-900"
+                        >
+                          {previousCrossReflectionExpanded[`${exchangeIndex}`] !== false ? '-Collapse All' : '+Expand All'}
+                        </button>
+                      </div>
+                      {previousCrossReflectionExpanded[`${exchangeIndex}`] !== false && (
+                        <div className="space-y-4 mt-4">
+                          {previousCrossReflectionResults[`${exchangeIndex}`].map((reflection: AIResponse, reflectionIndex: number) => (
+                            <div key={reflectionIndex} className="bg-white border border-green-200 rounded-lg overflow-hidden">
+                              <div className="p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                  <div className="flex items-center gap-3">
+                                    <h3 className="text-lg font-medium text-gray-900">{reflection.service}</h3>
+                                    <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                                      Cross-Reflection
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        const key = `${exchangeIndex}`;
+                                        setPreviousExpandedCrossReflections(prev => {
+                                          const expanded = new Set(prev[key] || new Set());
+                                          if (expanded.has(reflectionIndex)) {
+                                            expanded.delete(reflectionIndex);
+                                          } else {
+                                            expanded.add(reflectionIndex);
+                                          }
+                                          return {...prev, [key]: expanded};
+                                        });
+                                      }}
+                                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+                                    >
+                                      {(previousExpandedCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) ? '-Collapse' : '+Expand'}
+                                    </button>
+                                    <button
+                                      onClick={() => copyToClipboard(reflection.content || '', `prev-cross-${exchangeIndex}-${reflectionIndex}`)}
+                                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors flex items-center gap-1"
+                                      title="Copy reflection to clipboard"
+                                    >
+                                      {copiedItems[`prev-cross-${exchangeIndex}-${reflectionIndex}`] ? (
+                                        <>
+                                          <Check size={14} className="text-green-600" />
+                                          <span>Copied</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy size={14} />
+                                          <span>Copy</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const key = `${exchangeIndex}`;
+                                        setPreviousPreferredCrossReflections(prev => {
+                                          const preferred = new Set(prev[key] || new Set());
+                                          if (preferred.has(reflectionIndex)) {
+                                            preferred.delete(reflectionIndex);
+                                          } else {
+                                            preferred.add(reflectionIndex);
+                                          }
+                                          return {...prev, [key]: preferred};
+                                        });
+                                      }}
+                                      className={`px-3 py-1 text-sm border rounded transition-colors flex items-center gap-1 ${
+                                        (previousPreferredCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex)
+                                          ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
+                                          : 'border-gray-300 hover:bg-gray-100'
+                                      }`}
+                                      title="Mark as preferred response"
+                                    >
+                                      <Star size={14} className={(previousPreferredCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) ? 'fill-yellow-500' : ''} />
+                                      <span>Prefer</span>
+                                    </button>
+                                  </div>
+                                </div>
+                                {reflection.synopsis && (
+                                  <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                    <p className="text-sm text-gray-700 font-medium">Synopsis:</p>
+                                    <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
+                                  </div>
+                                )}
+                                {(previousExpandedCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) && reflection.content && (
+                                  <MarkdownRenderer content={reflection.content} className="text-gray-700" />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   )}
@@ -1155,7 +1419,7 @@ const AIConsensusComplete: React.FC = () => {
                     disabled={loadingCritique}
                     className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition-colors font-medium"
                   >
-                    {loadingCritique ? 'Comparing...' : '⚖️ Compare'}
+                    {loadingCritique ? '⚖️ Comparing...' : '⚖️ Compare'}
                   </button>
                   <button
                     onClick={performSynthesis}
@@ -1163,6 +1427,13 @@ const AIConsensusComplete: React.FC = () => {
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
                   >
                     {loadingSynthesis ? 'Combining...' : '🔗 Combine'}
+                  </button>
+                  <button
+                    onClick={performCrossReflection}
+                    disabled={loadingCrossReflection}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 transition-colors font-medium"
+                  >
+                    {loadingCrossReflection ? '🔀 Cross-reflecting...' : '🔀 Cross-reflect'}
                   </button>
                 </div>
               ) : (
@@ -1252,6 +1523,93 @@ const AIConsensusComplete: React.FC = () => {
             </div>
             {synthesisExpanded && (
               <MarkdownRenderer content={synthesisResult} className="text-gray-700" />
+            )}
+          </div>
+        )}
+
+        {/* Cross-Reflection Results */}
+        {crossReflectionResults.length > 0 && (
+          <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-green-900">AI Cross-Reflection</h3>
+              <button
+                onClick={() => setCrossReflectionExpanded(!crossReflectionExpanded)}
+                className="px-3 py-1 text-sm border border-green-300 rounded hover:bg-green-100 transition-colors text-green-900"
+              >
+                {crossReflectionExpanded ? '-Collapse All' : '+Expand All'}
+              </button>
+            </div>
+            {crossReflectionExpanded && (
+              <div className="space-y-4 mt-4">
+                {crossReflectionResults.map((reflection, index) => (
+                  <div key={index} className="bg-white border border-green-200 rounded-lg overflow-hidden">
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-medium text-gray-900">{reflection.service}</h3>
+                          <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                            Cross-Reflection
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const expanded = new Set(expandedCrossReflections);
+                              if (expanded.has(index)) {
+                                expanded.delete(index);
+                              } else {
+                                expanded.add(index);
+                              }
+                              setExpandedCrossReflections(expanded);
+                            }}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+                          >
+                            {expandedCrossReflections.has(index) ? '-Collapse' : '+Expand'}
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(reflection.content || '', `cross-reflection-${index}`)}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors flex items-center gap-1"
+                            title="Copy reflection to clipboard"
+                          >
+                            {copiedItems[`cross-reflection-${index}`] ? (
+                              <>
+                                <Check size={14} className="text-green-600" />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={14} />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => toggleCrossReflectionPreference(index)}
+                            className={`px-3 py-1 text-sm border rounded transition-colors flex items-center gap-1 ${
+                              preferredCrossReflections.has(index)
+                                ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
+                                : 'border-gray-300 hover:bg-gray-100'
+                            }`}
+                            title="Mark as preferred response"
+                          >
+                            <Star size={14} className={preferredCrossReflections.has(index) ? 'fill-yellow-500' : ''} />
+                            <span>Prefer</span>
+                          </button>
+                        </div>
+                      </div>
+                      {reflection.synopsis && (
+                        <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <p className="text-sm text-gray-700 font-medium">Synopsis:</p>
+                          <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
+                        </div>
+                      )}
+                      {expandedCrossReflections.has(index) && reflection.content && (
+                        <MarkdownRenderer content={reflection.content} className="text-gray-700" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
