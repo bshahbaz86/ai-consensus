@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Menu, Globe, Copy, Check } from 'lucide-react';
+import { X, Plus, Menu, Globe, Copy, Check, Star } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
@@ -41,6 +41,9 @@ const AIConsensusComplete: React.FC = () => {
   // Textarea ref for height reset
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Ref to prevent duplicate conversation creation in StrictMode
+  const conversationInitialized = useRef(false);
+
   // Conversation tracking for chat history
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
@@ -75,17 +78,33 @@ const AIConsensusComplete: React.FC = () => {
   const [previousSynthesisProviders, setPreviousSynthesisProviders] = useState<{[key: string]: string}>({});
   const [loadingPreviousSynthesis, setLoadingPreviousSynthesis] = useState<{[key: string]: boolean}>({});
 
+  // Cross-Reflection state
+  const [crossReflectionResults, setCrossReflectionResults] = useState<AIResponse[]>([]);
+  const [loadingCrossReflection, setLoadingCrossReflection] = useState(false);
+  const [previousCrossReflectionResults, setPreviousCrossReflectionResults] = useState<{[key: string]: AIResponse[]}>({});
+  const [loadingPreviousCrossReflection, setLoadingPreviousCrossReflection] = useState<{[key: string]: boolean}>({});
+  const [expandedCrossReflections, setExpandedCrossReflections] = useState<Set<number>>(new Set());
+  const [previousExpandedCrossReflections, setPreviousExpandedCrossReflections] = useState<{[key: string]: Set<number>}>({});
+  const [preferredCrossReflections, setPreferredCrossReflections] = useState<Set<number>>(new Set());
+  const [previousPreferredCrossReflections, setPreviousPreferredCrossReflections] = useState<{[key: string]: Set<number>}>({});
+
   // Expand/Collapse state for analysis results
   const [critiqueExpanded, setCritiqueExpanded] = useState(true);
   const [synthesisExpanded, setSynthesisExpanded] = useState(true);
+  const [crossReflectionExpanded, setCrossReflectionExpanded] = useState(true);
   const [previousCritiqueExpanded, setPreviousCritiqueExpanded] = useState<{[key: string]: boolean}>({});
   const [previousSynthesisExpanded, setPreviousSynthesisExpanded] = useState<{[key: string]: boolean}>({});
+  const [previousCrossReflectionExpanded, setPreviousCrossReflectionExpanded] = useState<{[key: string]: boolean}>({});
 
   // Copy state tracking
   const [copiedItems, setCopiedItems] = useState<{[key: string]: boolean}>({});
 
   // Initialize conversation on component mount
   useEffect(() => {
+    // Prevent duplicate initialization in React StrictMode
+    if (conversationInitialized.current) return;
+    conversationInitialized.current = true;
+
     const initializeConversation = async () => {
       try {
         const newConversation = await apiService.createConversation({
@@ -104,6 +123,7 @@ const AIConsensusComplete: React.FC = () => {
     };
 
     initializeConversation();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle conversation selection from sidebar
@@ -134,45 +154,56 @@ const AIConsensusComplete: React.FC = () => {
           synthesisProvider?: string;
         }> = [];
 
-        let currentExchange: any = null;
+        let currentExchange: {
+          question: string;
+          responses: AIResponse[];
+          webSearchSources: WebSearchSource[];
+        } | null = null;
 
         for (const msg of fullConversation.messages) {
           if (msg.role === 'user') {
-            // Start a new exchange
+            // Save previous exchange if it has responses
             if (currentExchange && currentExchange.responses.length > 0) {
               exchanges.push(currentExchange);
             }
+            // Start a new exchange
             currentExchange = {
               question: msg.content,
               responses: [],
               webSearchSources: []
             };
           } else if (msg.role === 'assistant' && currentExchange) {
-            // Add assistant response to current exchange
+            // Add assistant response to the current exchange
             const metadata = msg.metadata || {};
             const service = metadata.service || 'Unknown';
 
-            currentExchange.responses.push({
-              service: service,
-              content: msg.content,
-              success: true,
-              synopsis: metadata.synopsis || '',
-              provider: service
-            });
+            // Check if this service response already exists to avoid duplicates
+            const existingResponse = currentExchange.responses.find(r => r.service === service);
+            if (!existingResponse) {
+              currentExchange.responses.push({
+                service: service,
+                content: msg.content,
+                success: true,
+                synopsis: metadata.synopsis || ''
+              });
 
-            // Extract web search sources if available
-            if (metadata.web_search_sources && metadata.web_search_sources.length > 0) {
-              currentExchange.webSearchSources = metadata.web_search_sources;
+              // Extract web search sources if available
+              if (metadata.web_search_sources && metadata.web_search_sources.length > 0) {
+                currentExchange.webSearchSources = metadata.web_search_sources;
+              }
             }
           }
         }
 
-        // Push the last exchange if it exists
+        // Add the final exchange if it has responses
         if (currentExchange && currentExchange.responses.length > 0) {
           exchanges.push(currentExchange);
         }
 
         setConversationExchanges(exchanges);
+
+        // Clear the question input
+        setQuestion('');
       } else {
         setConversationHistory([]);
         setConversationExchanges([]);
@@ -209,6 +240,9 @@ const AIConsensusComplete: React.FC = () => {
       setResponses([]);
       setConversationExchanges([]);
       setCritiqueResult(null);
+      setCritiqueProvider(null);
+      setSynthesisResult(null);
+      setSynthesisProvider(null);
       setExpandedResponses(new Set());
       setSelectedForCritique(new Set());
       setPreferredResponses(new Set());
@@ -299,6 +333,11 @@ const AIConsensusComplete: React.FC = () => {
         synthesisProvider: synthesisProvider || undefined,
       }]);
 
+      // Save current cross-reflection results to previous results for the new exchange index
+      if (crossReflectionResults.length > 0) {
+        setPreviousCrossReflectionResults(prev => ({...prev, [`${newExchangeIndex}`]: crossReflectionResults}));
+      }
+
       // Auto-collapse the new exchange by default
       setExchangesCollapsed(prev => {
         const newSet = new Set(prev);
@@ -312,9 +351,12 @@ const AIConsensusComplete: React.FC = () => {
     setCritiqueProvider(null);
     setSynthesisResult(null);
     setSynthesisProvider(null);
+    setCrossReflectionResults([]); // Clear current cross-reflection results
     setSelectedForCritique(new Set());
     setPreferredResponses(new Set());
+    setPreferredCrossReflections(new Set());
     setExpandedResponses(new Set());
+    setExpandedCrossReflections(new Set());
     setQuestion(''); // Clear input immediately
 
     // Reset textarea height
@@ -429,7 +471,7 @@ const AIConsensusComplete: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_query: question,
+          user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
           llm1_name: response1.service,
           llm1_response: response1.content,
           llm2_name: response2.service,
@@ -493,6 +535,65 @@ const AIConsensusComplete: React.FC = () => {
       alert('Synthesis error: ' + error);
     } finally {
       setLoadingSynthesis(false);
+    }
+  };
+
+  const performCrossReflection = async () => {
+    if (selectedForCritique.size !== 2) {
+      alert('Please select exactly 2 responses for cross-reflection');
+      return;
+    }
+
+    const selectedIndices = Array.from(selectedForCritique);
+    const response1 = responses[selectedIndices[0]];
+    const response2 = responses[selectedIndices[1]];
+
+    setLoadingCrossReflection(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
+          llm1_name: response1.service,
+          llm1_response: response1.content,
+          llm2_name: response2.service,
+          llm2_response: response2.content,
+          chat_history: ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.reflections) {
+        // Store reflections as AIResponse objects
+        const reflections: AIResponse[] = data.reflections.map((reflection: any) => ({
+          service: `${reflection.service} (reflecting on ${reflection.reflecting_on})`,
+          success: true,
+          content: reflection.content,
+          synopsis: reflection.synopsis
+        }));
+        setCrossReflectionResults(reflections);
+
+        // Save cross-reflection results to conversation history
+        for (const reflection of reflections) {
+          if (reflection.content) {
+            await saveMessage('assistant', reflection.content, { service: reflection.service, type: 'cross-reflection' });
+            setConversationHistory(prev => [...prev, { role: reflection.service, content: reflection.content || '' }]);
+          }
+        }
+
+        // Refresh conversation list after saving
+        setConversationRefreshTrigger(prev => prev + 1);
+      } else {
+        alert('Cross-reflection failed: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Cross-reflection error:', error);
+      alert('Cross-reflection error: ' + error);
+    } finally {
+      setLoadingCrossReflection(false);
     }
   };
 
@@ -585,6 +686,57 @@ const AIConsensusComplete: React.FC = () => {
       alert('Synthesis error: ' + error);
     } finally {
       setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: false}));
+    }
+  };
+
+  const performPreviousCrossReflection = async (exchangeIndex: number, exchange: any) => {
+    const exchangeKey = `${exchangeIndex}`;
+    const selectedSet = previousExchangesSelected[exchangeKey] || new Set();
+
+    if (selectedSet.size !== 2) {
+      alert('Please select exactly 2 responses for cross-reflection');
+      return;
+    }
+
+    const selectedIndices = Array.from(selectedSet);
+    const response1 = exchange.responses[selectedIndices[0]];
+    const response2 = exchange.responses[selectedIndices[1]];
+
+    setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: true}));
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_query: exchange.question,
+          llm1_name: response1.service,
+          llm1_response: response1.content,
+          llm2_name: response2.service,
+          llm2_response: response2.content,
+          chat_history: ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.reflections) {
+        const reflections: AIResponse[] = data.reflections.map((reflection: any) => ({
+          service: `${reflection.service} (reflecting on ${reflection.reflecting_on})`,
+          success: true,
+          content: reflection.content,
+          synopsis: reflection.synopsis
+        }));
+        setPreviousCrossReflectionResults(prev => ({...prev, [exchangeKey]: reflections}));
+        setPreviousCrossReflectionExpanded(prev => ({...prev, [exchangeKey]: true})); // Default to expanded
+      } else {
+        alert('Cross-reflection failed: ' + data.error);
+      }
+    } catch (error) {
+      console.error('Cross-reflection error:', error);
+      alert('Cross-reflection error: ' + error);
+    } finally {
+      setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: false}));
     }
   };
 
@@ -683,6 +835,18 @@ const AIConsensusComplete: React.FC = () => {
       }
       newState[key] = newSet;
       return newState;
+    });
+  };
+
+  const toggleCrossReflectionPreference = (index: number) => {
+    setPreferredCrossReflections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
     });
   };
 
@@ -826,7 +990,7 @@ const AIConsensusComplete: React.FC = () => {
                           <div className="flex gap-2 justify-end mb-4">
                             <button
                               onClick={() => togglePreviousExpanded(exchangeIndex, responseIndex)}
-                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors text-gray-700"
                             >
                               {expandedSet.has(responseIndex) ? '-Collapse' : '+Expand'}
                             </button>
@@ -838,7 +1002,7 @@ const AIConsensusComplete: React.FC = () => {
                                   : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                               }`}
                             >
-                              {selectedSet.has(responseIndex) ? 'Selected for Analysis' : 'Select'}
+                              {selectedSet.has(responseIndex) ? 'Selected' : 'Select'}
                             </button>
                             <button
                               onClick={() => togglePreviousPreferred(exchangeIndex, responseIndex)}
@@ -848,11 +1012,11 @@ const AIConsensusComplete: React.FC = () => {
                                   : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                               }`}
                             >
-                              {preferredSet.has(responseIndex) ? 'Preferred This' : 'Prefer'}
+                              {preferredSet.has(responseIndex) ? 'Preferred' : 'Prefer'}
                             </button>
                             <button
                               onClick={() => copyToClipboard(response.content || '', `prev-${exchangeIndex}-${responseIndex}`)}
-                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1"
+                              className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 text-gray-700"
                               title="Copy to clipboard"
                             >
                               {copiedItems[`prev-${exchangeIndex}-${responseIndex}`] ? (
@@ -917,7 +1081,14 @@ const AIConsensusComplete: React.FC = () => {
                               disabled={loadingPreviousSynthesis[`${exchangeIndex}`]}
                               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
                             >
-                              {loadingPreviousSynthesis[`${exchangeIndex}`] ? 'Combining...' : '🔗 Combine'}
+                              {loadingPreviousSynthesis[`${exchangeIndex}`] ? '🔗 Combining...' : '🔗 Combine'}
+                            </button>
+                            <button
+                              onClick={() => performPreviousCrossReflection(exchangeIndex, exchange)}
+                              disabled={loadingPreviousCrossReflection[`${exchangeIndex}`]}
+                              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 transition-colors font-medium"
+                            >
+                              {loadingPreviousCrossReflection[`${exchangeIndex}`] ? '🔀 Cross-reflecting...' : '🔀 Cross-reflect'}
                             </button>
                           </div>
                         ) : (
@@ -931,39 +1102,37 @@ const AIConsensusComplete: React.FC = () => {
                   {(exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`]) && (
                     <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
                       <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setPreviousCritiqueExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
-                            className="text-purple-900 hover:text-purple-700 transition-colors"
+                            className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors text-purple-900"
                           >
-                            {previousCritiqueExpanded[`${exchangeIndex}`] !== false ? '▼' : '▶'}
+                            {previousCritiqueExpanded[`${exchangeIndex}`] !== false ? '-Collapse' : '+Expand'}
                           </button>
-                          <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
-                        </div>
-                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => copyToClipboard(
                               exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`],
                               `prev-critique-${exchangeIndex}`
                             )}
-                            className="px-2 py-1 text-xs border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1"
+                            className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1 text-purple-900"
                             title="Copy critique to clipboard"
                           >
                             {copiedItems[`prev-critique-${exchangeIndex}`] ? (
                               <>
-                                <Check size={12} className="text-green-600" />
+                                <Check size={14} className="text-green-600" />
                                 <span>Copied</span>
                               </>
                             ) : (
                               <>
-                                <Copy size={12} />
+                                <Copy size={14} />
                                 <span>Copy</span>
                               </>
                             )}
                           </button>
                           {(exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]) && (
                             <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                              Analyzed by: {exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]}
+                              Compared by: {exchange.critiqueProvider || previousCritiqueProviders[`${exchangeIndex}`]}
                             </span>
                           )}
                         </div>
@@ -978,45 +1147,144 @@ const AIConsensusComplete: React.FC = () => {
                   {(exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`]) && (
                     <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
                       <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setPreviousSynthesisExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
-                            className="text-blue-900 hover:text-blue-700 transition-colors"
+                            className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors text-blue-900"
                           >
-                            {previousSynthesisExpanded[`${exchangeIndex}`] !== false ? '▼' : '▶'}
+                            {previousSynthesisExpanded[`${exchangeIndex}`] !== false ? '-Collapse' : '+Expand'}
                           </button>
-                          <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
-                        </div>
-                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => copyToClipboard(
                               exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`],
                               `prev-synthesis-${exchangeIndex}`
                             )}
-                            className="px-2 py-1 text-xs border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                            className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-blue-900"
                             title="Copy synthesis to clipboard"
                           >
                             {copiedItems[`prev-synthesis-${exchangeIndex}`] ? (
                               <>
-                                <Check size={12} className="text-green-600" />
+                                <Check size={14} className="text-green-600" />
                                 <span>Copied</span>
                               </>
                             ) : (
                               <>
-                                <Copy size={12} />
+                                <Copy size={14} />
                                 <span>Copy</span>
                               </>
                             )}
                           </button>
                           {(exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]) && (
                             <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                              Synthesized by: {exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]}
+                              Combined by: {exchange.synthesisProvider || previousSynthesisProviders[`${exchangeIndex}`]}
                             </span>
                           )}
                         </div>
                       </div>
                       {previousSynthesisExpanded[`${exchangeIndex}`] !== false && (
                         <MarkdownRenderer content={exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`]} className="text-gray-700" />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Cross-Reflection Results for previous exchange */}
+                  {previousCrossReflectionResults[`${exchangeIndex}`] && previousCrossReflectionResults[`${exchangeIndex}`].length > 0 && (
+                    <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="font-semibold text-green-900">AI Cross-Reflection</h3>
+                        <button
+                          onClick={() => setPreviousCrossReflectionExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
+                          className="px-3 py-1 text-sm border border-green-300 rounded hover:bg-green-100 transition-colors text-green-900"
+                        >
+                          {previousCrossReflectionExpanded[`${exchangeIndex}`] !== false ? '-Collapse All' : '+Expand All'}
+                        </button>
+                      </div>
+                      {previousCrossReflectionExpanded[`${exchangeIndex}`] !== false && (
+                        <div className="space-y-4 mt-4">
+                          {previousCrossReflectionResults[`${exchangeIndex}`].map((reflection: AIResponse, reflectionIndex: number) => (
+                            <div key={reflectionIndex} className="bg-white border border-green-200 rounded-lg overflow-hidden">
+                              <div className="p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                  <div className="flex items-center gap-3">
+                                    <h3 className="text-lg font-medium text-gray-900">{reflection.service}</h3>
+                                    <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                                      Cross-Reflection
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => {
+                                        const key = `${exchangeIndex}`;
+                                        setPreviousExpandedCrossReflections(prev => {
+                                          const expanded = new Set(prev[key] || new Set());
+                                          if (expanded.has(reflectionIndex)) {
+                                            expanded.delete(reflectionIndex);
+                                          } else {
+                                            expanded.add(reflectionIndex);
+                                          }
+                                          return {...prev, [key]: expanded};
+                                        });
+                                      }}
+                                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+                                    >
+                                      {(previousExpandedCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) ? '-Collapse' : '+Expand'}
+                                    </button>
+                                    <button
+                                      onClick={() => copyToClipboard(reflection.content || '', `prev-cross-${exchangeIndex}-${reflectionIndex}`)}
+                                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors flex items-center gap-1"
+                                      title="Copy reflection to clipboard"
+                                    >
+                                      {copiedItems[`prev-cross-${exchangeIndex}-${reflectionIndex}`] ? (
+                                        <>
+                                          <Check size={14} className="text-green-600" />
+                                          <span>Copied</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy size={14} />
+                                          <span>Copy</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const key = `${exchangeIndex}`;
+                                        setPreviousPreferredCrossReflections(prev => {
+                                          const preferred = new Set(prev[key] || new Set());
+                                          if (preferred.has(reflectionIndex)) {
+                                            preferred.delete(reflectionIndex);
+                                          } else {
+                                            preferred.add(reflectionIndex);
+                                          }
+                                          return {...prev, [key]: preferred};
+                                        });
+                                      }}
+                                      className={`px-3 py-1 text-sm border rounded transition-colors flex items-center gap-1 ${
+                                        (previousPreferredCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex)
+                                          ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
+                                          : 'border-gray-300 hover:bg-gray-100'
+                                      }`}
+                                      title="Mark as preferred response"
+                                    >
+                                      <Star size={14} className={(previousPreferredCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) ? 'fill-yellow-500' : ''} />
+                                      <span>Prefer</span>
+                                    </button>
+                                  </div>
+                                </div>
+                                {reflection.synopsis && (
+                                  <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                    <p className="text-sm text-gray-700 font-medium">Synopsis:</p>
+                                    <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
+                                  </div>
+                                )}
+                                {(previousExpandedCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) && reflection.content && (
+                                  <MarkdownRenderer content={reflection.content} className="text-gray-700" />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   )}
@@ -1064,7 +1332,7 @@ const AIConsensusComplete: React.FC = () => {
                       <div className="flex gap-2">
                         <button
                           onClick={() => toggleExpanded(index)}
-                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors text-gray-700"
                         >
                           {expandedResponses.has(index) ? '-Collapse' : '+Expand'}
                         </button>
@@ -1076,7 +1344,7 @@ const AIConsensusComplete: React.FC = () => {
                               : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                           }`}
                         >
-                          {selectedForCritique.has(index) ? 'Selected for Analysis' : 'Select'}
+                          {selectedForCritique.has(index) ? 'Selected' : 'Select'}
                         </button>
                         <button
                           onClick={() => togglePreference(index)}
@@ -1086,11 +1354,11 @@ const AIConsensusComplete: React.FC = () => {
                               : 'border-gray-300 hover:bg-gray-50 text-gray-700'
                           }`}
                         >
-                          {preferredResponses.has(index) ? 'Preferred This' : 'Prefer'}
+                          {preferredResponses.has(index) ? 'Preferred' : 'Prefer'}
                         </button>
                         <button
                           onClick={() => copyToClipboard(response.content || '', `current-${index}`)}
-                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 ml-auto"
+                          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 ml-auto text-gray-700"
                           title="Copy to clipboard"
                         >
                           {copiedItems[`current-${index}`] ? (
@@ -1151,7 +1419,7 @@ const AIConsensusComplete: React.FC = () => {
                     disabled={loadingCritique}
                     className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 transition-colors font-medium"
                   >
-                    {loadingCritique ? 'Analyzing...' : '⚖️ Compare'}
+                    {loadingCritique ? '⚖️ Comparing...' : '⚖️ Compare'}
                   </button>
                   <button
                     onClick={performSynthesis}
@@ -1159,6 +1427,13 @@ const AIConsensusComplete: React.FC = () => {
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-medium"
                   >
                     {loadingSynthesis ? 'Combining...' : '🔗 Combine'}
+                  </button>
+                  <button
+                    onClick={performCrossReflection}
+                    disabled={loadingCrossReflection}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 transition-colors font-medium"
+                  >
+                    {loadingCrossReflection ? '🔀 Cross-reflecting...' : '🔀 Cross-reflect'}
                   </button>
                 </div>
               ) : (
@@ -1172,36 +1447,34 @@ const AIConsensusComplete: React.FC = () => {
         {critiqueResult && (
           <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-purple-900">AI Comparison</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCritiqueExpanded(!critiqueExpanded)}
-                  className="text-purple-900 hover:text-purple-700 transition-colors"
+                  className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors text-purple-900"
                 >
-                  {critiqueExpanded ? '▼' : '▶'}
+                  {critiqueExpanded ? '-Collapse' : '+Expand'}
                 </button>
-                <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
-              </div>
-              <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(critiqueResult, 'current-critique')}
-                  className="px-2 py-1 text-xs border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1"
+                  className="px-3 py-1 text-sm border border-purple-300 rounded hover:bg-purple-100 transition-colors flex items-center gap-1 text-purple-900"
                   title="Copy critique to clipboard"
                 >
                   {copiedItems['current-critique'] ? (
                     <>
-                      <Check size={12} className="text-green-600" />
+                      <Check size={14} className="text-green-600" />
                       <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy size={12} />
+                      <Copy size={14} />
                       <span>Copy</span>
                     </>
                   )}
                 </button>
                 {critiqueProvider && (
                   <span className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                    Analyzed by: {critiqueProvider}
+                    Compared by: {critiqueProvider}
                   </span>
                 )}
               </div>
@@ -1216,42 +1489,127 @@ const AIConsensusComplete: React.FC = () => {
         {synthesisResult && (
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-blue-900">AI Combination</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSynthesisExpanded(!synthesisExpanded)}
-                  className="text-blue-900 hover:text-blue-700 transition-colors"
+                  className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors text-blue-900"
                 >
-                  {synthesisExpanded ? '▼' : '▶'}
+                  {synthesisExpanded ? '-Collapse' : '+Expand'}
                 </button>
-                <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
-              </div>
-              <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(synthesisResult, 'current-synthesis')}
-                  className="px-2 py-1 text-xs border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                  className="px-3 py-1 text-sm border border-blue-300 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-blue-900"
                   title="Copy synthesis to clipboard"
                 >
                   {copiedItems['current-synthesis'] ? (
                     <>
-                      <Check size={12} className="text-green-600" />
+                      <Check size={14} className="text-green-600" />
                       <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy size={12} />
+                      <Copy size={14} />
                       <span>Copy</span>
                     </>
                   )}
                 </button>
                 {synthesisProvider && (
                   <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                    Synthesized by: {synthesisProvider}
+                    Combined by: {synthesisProvider}
                   </span>
                 )}
               </div>
             </div>
             {synthesisExpanded && (
               <MarkdownRenderer content={synthesisResult} className="text-gray-700" />
+            )}
+          </div>
+        )}
+
+        {/* Cross-Reflection Results */}
+        {crossReflectionResults.length > 0 && (
+          <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-green-900">AI Cross-Reflection</h3>
+              <button
+                onClick={() => setCrossReflectionExpanded(!crossReflectionExpanded)}
+                className="px-3 py-1 text-sm border border-green-300 rounded hover:bg-green-100 transition-colors text-green-900"
+              >
+                {crossReflectionExpanded ? '-Collapse All' : '+Expand All'}
+              </button>
+            </div>
+            {crossReflectionExpanded && (
+              <div className="space-y-4 mt-4">
+                {crossReflectionResults.map((reflection, index) => (
+                  <div key={index} className="bg-white border border-green-200 rounded-lg overflow-hidden">
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-medium text-gray-900">{reflection.service}</h3>
+                          <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                            Cross-Reflection
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const expanded = new Set(expandedCrossReflections);
+                              if (expanded.has(index)) {
+                                expanded.delete(index);
+                              } else {
+                                expanded.add(index);
+                              }
+                              setExpandedCrossReflections(expanded);
+                            }}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
+                          >
+                            {expandedCrossReflections.has(index) ? '-Collapse' : '+Expand'}
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(reflection.content || '', `cross-reflection-${index}`)}
+                            className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors flex items-center gap-1"
+                            title="Copy reflection to clipboard"
+                          >
+                            {copiedItems[`cross-reflection-${index}`] ? (
+                              <>
+                                <Check size={14} className="text-green-600" />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={14} />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => toggleCrossReflectionPreference(index)}
+                            className={`px-3 py-1 text-sm border rounded transition-colors flex items-center gap-1 ${
+                              preferredCrossReflections.has(index)
+                                ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
+                                : 'border-gray-300 hover:bg-gray-100'
+                            }`}
+                            title="Mark as preferred response"
+                          >
+                            <Star size={14} className={preferredCrossReflections.has(index) ? 'fill-yellow-500' : ''} />
+                            <span>Prefer</span>
+                          </button>
+                        </div>
+                      </div>
+                      {reflection.synopsis && (
+                        <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                          <p className="text-sm text-gray-700 font-medium">Synopsis:</p>
+                          <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
+                        </div>
+                      )}
+                      {expandedCrossReflections.has(index) && reflection.content && (
+                        <MarkdownRenderer content={reflection.content} className="text-gray-700" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

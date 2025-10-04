@@ -603,3 +603,189 @@ Focus on helping improve future responses while maintaining objectivity in your 
             'success': False,
             'error': str(e)
         }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def cross_reflect(request):
+    """
+    Generate cross-reflections where each LLM reflects on the other's response.
+    Each LLM receives the peer's answer and provides a reflection/critique.
+    """
+    try:
+        data = json.loads(request.body)
+        user_query = data.get('user_query', '')
+        llm1_name = data.get('llm1_name', '')
+        llm1_response = data.get('llm1_response', '')
+        llm2_name = data.get('llm2_name', '')
+        llm2_response = data.get('llm2_response', '')
+        chat_history = data.get('chat_history', '')
+
+        if not all([user_query, llm1_name, llm1_response, llm2_name, llm2_response]):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+
+        # Map service names to their configurations
+        service_config = {
+            'claude': {
+                'api_key': settings.CLAUDE_API_KEY,
+                'model': 'claude-sonnet-4-20250514'
+            },
+            'openai': {
+                'api_key': settings.OPENAI_API_KEY,
+                'model': 'gpt-4o'
+            },
+            'gemini': {
+                'api_key': settings.GEMINI_API_KEY,
+                'model': 'gemini-2.0-flash-exp'
+            }
+        }
+
+        # Normalize service names
+        llm1_key = llm1_name.lower()
+        llm2_key = llm2_name.lower()
+
+        # Validate that both services are available
+        if llm1_key not in service_config or llm2_key not in service_config:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid service names: {llm1_name}, {llm2_name}'
+            }, status=400)
+
+        if not service_config[llm1_key]['api_key'] or not service_config[llm2_key]['api_key']:
+            return JsonResponse({
+                'success': False,
+                'error': 'API keys not configured for the selected services'
+            }, status=400)
+
+        # Create reflection prompts
+        # LLM1 reflects on LLM2's response
+        llm1_reflection_prompt = f"""You are {llm1_name}, and you previously provided a response to a user's query. Now you are given the opportunity to reflect on another AI's response to the same query.
+
+Original User Query: {user_query}
+
+Chat History: {chat_history}
+
+Your Original Response:
+{llm1_response}
+
+{llm2_name}'s Response:
+{llm2_response}
+
+Instructions:
+Please provide a thoughtful reflection on {llm2_name}'s response. Consider:
+1. What insights or perspectives did {llm2_name} offer that you may have missed or underemphasized?
+2. Are there any points where {llm2_name}'s approach differs from yours? If so, evaluate the merits of their approach.
+3. What can you learn from {llm2_name}'s response that could improve your future answers?
+4. If you were to revise your original response based on {llm2_name}'s perspective, what would you change or add?
+5. Are there any areas where you still believe your approach was stronger? Explain why.
+
+Provide a balanced, constructive reflection that demonstrates intellectual honesty and a willingness to learn from other perspectives."""
+
+        # LLM2 reflects on LLM1's response
+        llm2_reflection_prompt = f"""You are {llm2_name}, and you previously provided a response to a user's query. Now you are given the opportunity to reflect on another AI's response to the same query.
+
+Original User Query: {user_query}
+
+Chat History: {chat_history}
+
+Your Original Response:
+{llm2_response}
+
+{llm1_name}'s Response:
+{llm1_response}
+
+Instructions:
+Please provide a thoughtful reflection on {llm1_name}'s response. Consider:
+1. What insights or perspectives did {llm1_name} offer that you may have missed or underemphasized?
+2. Are there any points where {llm1_name}'s approach differs from yours? If so, evaluate the merits of their approach.
+3. What can you learn from {llm1_name}'s response that could improve your future answers?
+4. If you were to revise your original response based on {llm1_name}'s perspective, what would you change or add?
+5. Are there any areas where you still believe your approach was stronger? Explain why.
+
+Provide a balanced, constructive reflection that demonstrates intellectual honesty and a willingness to learn from other perspectives."""
+
+        # Create AI service instances
+        llm1_service = AIServiceFactory.create_service(
+            llm1_key,
+            service_config[llm1_key]['api_key'],
+            model=service_config[llm1_key]['model']
+        )
+
+        llm2_service = AIServiceFactory.create_service(
+            llm2_key,
+            service_config[llm2_key]['api_key'],
+            model=service_config[llm2_key]['model']
+        )
+
+        # Run both reflections in parallel for better performance
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            # Generate both reflections concurrently
+            llm1_reflection_response, llm2_reflection_response = loop.run_until_complete(
+                asyncio.gather(
+                    llm1_service.generate_response(llm1_reflection_prompt),
+                    llm2_service.generate_response(llm2_reflection_prompt)
+                )
+            )
+
+            # Generate synopses for both reflections
+            llm1_synopsis, llm2_synopsis = loop.run_until_complete(
+                asyncio.gather(
+                    generate_synopsis_with_same_ai(
+                        llm1_reflection_response.get('content', ''),
+                        llm1_key,
+                        service_config[llm1_key]['api_key'],
+                        service_config[llm1_key]['model']
+                    ) if llm1_reflection_response.get('success') else asyncio.sleep(0, result="Reflection failed"),
+                    generate_synopsis_with_same_ai(
+                        llm2_reflection_response.get('content', ''),
+                        llm2_key,
+                        service_config[llm2_key]['api_key'],
+                        service_config[llm2_key]['model']
+                    ) if llm2_reflection_response.get('success') else asyncio.sleep(0, result="Reflection failed")
+                )
+            )
+        finally:
+            loop.close()
+
+        # Check if both reflections succeeded
+        if llm1_reflection_response.get('success') and llm2_reflection_response.get('success'):
+            return JsonResponse({
+                'success': True,
+                'reflections': [
+                    {
+                        'service': llm1_name,
+                        'content': llm1_reflection_response.get('content', ''),
+                        'synopsis': llm1_synopsis,
+                        'reflecting_on': llm2_name
+                    },
+                    {
+                        'service': llm2_name,
+                        'content': llm2_reflection_response.get('content', ''),
+                        'synopsis': llm2_synopsis,
+                        'reflecting_on': llm1_name
+                    }
+                ]
+            })
+        else:
+            # Handle partial or complete failure
+            errors = []
+            if not llm1_reflection_response.get('success'):
+                errors.append(f"{llm1_name}: {llm1_reflection_response.get('error', 'Unknown error')}")
+            if not llm2_reflection_response.get('success'):
+                errors.append(f"{llm2_name}: {llm2_reflection_response.get('error', 'Unknown error')}")
+
+            return JsonResponse({
+                'success': False,
+                'error': f"Cross-reflection failed: {'; '.join(errors)}"
+            }, status=500)
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
