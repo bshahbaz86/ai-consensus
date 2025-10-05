@@ -74,13 +74,15 @@ class ConversationListSerializer(serializers.ModelSerializer):
         return list(services)
 
     def get_total_cost(self, obj):
-        """Calculate total cost of this conversation."""
-        total = AIResponse.objects.filter(
-            query__conversation=obj
-        ).aggregate(
-            total=models.Sum('cost')
-        )['total'] or 0
-        return float(total)
+        """Calculate total cost of this conversation from database view."""
+        from django.db import connection
+
+        # Use parameterized query - convert UUID to string without hyphens (SQLite stores UUIDs as 32-char strings)
+        sql = "SELECT total_cost FROM conversation_cost_view WHERE conversation_id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [str(obj.id).replace('-', '')])
+            row = cursor.fetchone()
+            return float(row[0]) if row else 0.0
 
 
 class ConversationDetailSerializer(serializers.ModelSerializer):
@@ -129,13 +131,15 @@ class ConversationDetailSerializer(serializers.ModelSerializer):
         return list(services)
 
     def get_total_cost(self, obj):
-        """Calculate total cost of this conversation."""
-        total = AIResponse.objects.filter(
-            query__conversation=obj
-        ).aggregate(
-            total=Sum('cost')
-        )['total'] or 0
-        return float(total)
+        """Calculate total cost of this conversation from database view."""
+        from django.db import connection
+
+        # Use parameterized query - convert UUID to string without hyphens (SQLite stores UUIDs as 32-char strings)
+        sql = "SELECT total_cost FROM conversation_cost_view WHERE conversation_id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [str(obj.id).replace('-', '')])
+            row = cursor.fetchone()
+            return float(row[0]) if row else 0.0
 
 
 class ConversationCreateSerializer(serializers.ModelSerializer):
@@ -147,12 +151,21 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Create conversation with user from request context if authenticated."""
+        from django.contrib.auth import get_user_model
+
         request = self.context.get('request')
         if request and request.user and request.user.is_authenticated:
             validated_data['user'] = request.user
         else:
-            # Allow conversations without a user for demo purposes
-            validated_data['user'] = None
+            # Use default demo user for unauthenticated conversations (enables cost tracking)
+            User = get_user_model()
+            try:
+                demo_user = User.objects.get(username='testuser')
+                validated_data['user'] = demo_user
+            except User.DoesNotExist:
+                # Fallback: create or get first available user
+                demo_user = User.objects.first()
+                validated_data['user'] = demo_user if demo_user else None
         return super().create(validated_data)
 
 

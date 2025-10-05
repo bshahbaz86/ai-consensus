@@ -24,9 +24,11 @@ class AIResponse(models.Model):
     is_preferred = models.BooleanField(default=False)  # Star-marked by AI
     
     # Metadata
-    tokens_used = models.PositiveIntegerField(default=0)
+    tokens_used = models.PositiveIntegerField(default=0)  # Total tokens (kept for backwards compatibility)
+    input_tokens = models.PositiveIntegerField(default=0)  # Input/prompt tokens
+    output_tokens = models.PositiveIntegerField(default=0)  # Output/completion tokens
     response_time_ms = models.PositiveIntegerField(default=0)
-    cost = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    cost = models.DecimalField(max_digits=10, decimal_places=6, default=0)  # Calculated by DB view
     
     # Status and timing
     created_at = models.DateTimeField(auto_now_add=True)

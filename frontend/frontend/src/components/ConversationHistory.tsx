@@ -52,7 +52,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
   };
 
   const formatCost = (cost: number) => {
-    return `$${cost.toFixed(4)}`;
+    return cost.toFixed(4);
   };
 
   return (
@@ -155,27 +155,10 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
             {conversation.total_messages}
           </span>
 
-          {conversation.total_cost > 0 && (
+          {conversation.total_cost >= 0.0001 && (
             <span className="flex items-center gap-1">
               <DollarSign size={12} />
               {formatCost(conversation.total_cost)}
-            </span>
-          )}
-        </div>
-
-        {/* AI services badges */}
-        <div className="flex gap-1">
-          {conversation.ai_services_used.slice(0, 2).map((service) => (
-            <span
-              key={service}
-              className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs"
-            >
-              {service.slice(0, 3).toUpperCase()}
-            </span>
-          ))}
-          {conversation.ai_services_used.length > 2 && (
-            <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-              +{conversation.ai_services_used.length - 2}
             </span>
           )}
         </div>

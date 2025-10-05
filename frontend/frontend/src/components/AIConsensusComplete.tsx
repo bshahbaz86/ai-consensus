@@ -385,7 +385,8 @@ const AIConsensusComplete: React.FC = () => {
           message: currentQuestion,
           services: selectedServices,
           use_web_search: webSearchEnabled,
-          chat_history: chatHistoryString
+          chat_history: chatHistoryString,
+          conversation_id: currentConversationId
         })
       });
 
@@ -485,6 +486,8 @@ const AIConsensusComplete: React.FC = () => {
       if (data.success) {
         setCritiqueResult(data.critique);
         setCritiqueProvider(data.critique_provider || 'Unknown');
+        // Refresh conversation list to show updated costs
+        setConversationRefreshTrigger(prev => prev + 1);
       } else {
         alert('Critique failed: ' + data.error);
       }
@@ -527,6 +530,8 @@ const AIConsensusComplete: React.FC = () => {
       if (data.success) {
         setSynthesisResult(data.synthesis);
         setSynthesisProvider(data.synthesis_provider || 'Unknown');
+        // Refresh conversation list to show updated costs
+        setConversationRefreshTrigger(prev => prev + 1);
       } else {
         alert('Synthesis failed: ' + data.error);
       }
@@ -1102,7 +1107,7 @@ const AIConsensusComplete: React.FC = () => {
                   {(exchange.critiqueResult || previousCritiqueResults[`${exchangeIndex}`]) && (
                     <div className="mt-6 bg-purple-50 border border-purple-200 rounded-lg p-6">
                       <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-semibold text-purple-900">AI Critique & Analysis</h3>
+                        <h3 className="font-semibold text-purple-900">AI Comparison</h3>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setPreviousCritiqueExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
@@ -1147,7 +1152,7 @@ const AIConsensusComplete: React.FC = () => {
                   {(exchange.synthesisResult || previousSynthesisResults[`${exchangeIndex}`]) && (
                     <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
                       <div className="flex justify-between items-center mb-3">
-                        <h3 className="font-semibold text-blue-900">Combined Synthesis</h3>
+                        <h3 className="font-semibold text-blue-900">AI Combination</h3>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setPreviousSynthesisExpanded(prev => ({...prev, [`${exchangeIndex}`]: !prev[`${exchangeIndex}`]}))}
@@ -1217,13 +1222,14 @@ const AIConsensusComplete: React.FC = () => {
                                       onClick={() => {
                                         const key = `${exchangeIndex}`;
                                         setPreviousExpandedCrossReflections(prev => {
-                                          const expanded = new Set(prev[key] || new Set());
-                                          if (expanded.has(reflectionIndex)) {
-                                            expanded.delete(reflectionIndex);
-                                          } else {
-                                            expanded.add(reflectionIndex);
+                                          const currentSet = prev[key] || new Set();
+                                          const newSet = new Set<number>();
+                                          // If clicking the same one that's expanded, collapse it
+                                          if (!currentSet.has(reflectionIndex)) {
+                                            newSet.add(reflectionIndex);
                                           }
-                                          return {...prev, [key]: expanded};
+                                          // Otherwise, only expand the clicked one (collapse others)
+                                          return {...prev, [key]: newSet};
                                         });
                                       }}
                                       className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
@@ -1554,13 +1560,15 @@ const AIConsensusComplete: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
-                              const expanded = new Set(expandedCrossReflections);
-                              if (expanded.has(index)) {
-                                expanded.delete(index);
-                              } else {
-                                expanded.add(index);
-                              }
-                              setExpandedCrossReflections(expanded);
+                              setExpandedCrossReflections(prev => {
+                                const newSet = new Set<number>();
+                                // If clicking the same one that's expanded, collapse it
+                                if (!prev.has(index)) {
+                                  newSet.add(index);
+                                }
+                                // Otherwise, only expand the clicked one (collapse others)
+                                return newSet;
+                              });
                             }}
                             className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
                           >
