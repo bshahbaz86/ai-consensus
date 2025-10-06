@@ -222,14 +222,15 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-# Session cookie settings for cross-origin usage
-SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+# Cookie settings for cross-origin usage
+# SameSite='None' is required for cross-origin requests (localhost:3000 → localhost:8000)
+# In production with HTTPS, set SECURE cookies to True
+SESSION_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_SECURE = not DEBUG  # True in production with HTTPS, False in development
 SESSION_COOKIE_HTTPONLY = True
 
-# CSRF cookie settings for cross-origin usage
-CSRF_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
+CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SECURE = not DEBUG  # True in production with HTTPS, False in development
 CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
 
 # API Key Encryption
