@@ -86,35 +86,78 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 
 ```mermaid
 graph TB
-    U[User] -->|Query + Web Search Toggle| F[React Frontend]
-    F -->|HTTP Request| D[Django API]
+    U[User] -->|Query + Web Search Toggle| FE[React Frontend]
+    FE -->|HTTP/REST API| API[Django REST API v1]
 
-    D -->|Web Search Enabled?| WSC[Web Search Coordinator]
+    API -->|Route Requests| ORCH[Multi-Agent Orchestrator]
+
+    %% Web Search Layer
+    ORCH -->|Web Search Enabled?| WSC[Web Search Coordinator]
+    WSC -->|Rate Limiting & Caching| RC[Redis Cache - 15min TTL]
     WSC -->|Search Query| GSA[Google Custom Search API]
-    GSA -->|Search Results| WSC
-    WSC -->|Cached Results| RC[Redis Cache]
-    RC -->|15min TTL| WSC
+    GSA -->|Search Results + Sources| WSC
+    WSC -->|Enriched Context| ORCH
 
-    D -->|Parallel Requests + Web Context| C[Claude API]
-    D -->|Parallel Requests + Web Context| O[OpenAI API]
-    D -->|Parallel Requests + Web Context| G[Gemini API]
+    %% AI Service Layer
+    ORCH -->|Parallel Async Requests| AS[AI Services Manager]
+    AS -->|Service Call + Context| C[Claude API]
+    AS -->|Service Call + Context| O[OpenAI API]
+    AS -->|Service Call + Context| G[Gemini API]
 
-    D -->|Structured JSON| PS[Pydantic Structured Summaries]
-    PS -->|JSON Schema| C
-    PS -->|JSON Schema| O
-    PS -->|JSON Schema| G
+    %% Structured Summaries
+    AS -->|Pydantic JSON Schema| PS[Structured Summary Service]
+    PS -->|Validate Response| C
+    PS -->|Validate Response| O
+    PS -->|Validate Response| G
 
-    C -->|Response + Sources| D
-    O -->|Response + Sources| D
-    G -->|Response + Sources| D
+    %% Response Collection
+    C -->|Response + Tokens| AS
+    O -->|Response + Tokens| AS
+    G -->|Response + Tokens| AS
 
-    D -->|JSON Response + Web Sources| F
-    F -->|Display with Collapsible Sources| U
+    AS -->|All Responses| ORCH
 
-    subgraph "AI Services"
-        C
-        O
-        G
+    %% Data Persistence
+    ORCH -->|Save| CONV[Conversations App]
+    ORCH -->|Save| RESP[Responses App]
+    ORCH -->|Save| AIQ[AI Services App]
+
+    CONV -->|Store| DB[(PostgreSQL Database)]
+    RESP -->|Store| DB
+    AIQ -->|Store| DB
+
+    %% Database Models
+    DB -->|Conversations, Messages| CONV
+    DB -->|AI Responses, Tokens, Cost| RESP
+    DB -->|AI Queries, Service Tasks| AIQ
+    DB -->|User Accounts| AUTH[Accounts App]
+
+    %% Response to Frontend
+    ORCH -->|JSON Response| API
+    API -->|Responses + Web Sources + Cost| FE
+    FE -->|Display| UI[UI Components]
+
+    UI -->|Expand/Collapse| FE
+    UI -->|Select for AI Critic| CRIT[AI Critique Service]
+    UI -->|Preferred Response| ORCH
+
+    CRIT -->|Compare 2 Responses| AS
+    AS -->|Critique Analysis| CRIT
+    CRIT -->|Comparison Result| FE
+
+    %% Conversation Continuity
+    FE -->|Continue with Selected AI| ORCH
+    ORCH -->|Load Context| CONV
+    CONV -->|Previous Messages| ORCH
+
+    subgraph "Frontend Layer"
+        FE
+        UI
+    end
+
+    subgraph "API Layer"
+        API
+        ORCH
     end
 
     subgraph "Web Search Layer"
@@ -123,10 +166,61 @@ graph TB
         RC
     end
 
-    subgraph "Advanced AI Features"
+    subgraph "AI Services Layer"
+        AS
+        C
+        O
+        G
         PS
+        CRIT
+    end
+
+    subgraph "Django Apps"
+        CONV
+        RESP
+        AIQ
+        AUTH
+    end
+
+    subgraph "Data Layer"
+        DB
     end
 ```
+
+### Architecture Components
+
+#### Frontend Layer
+- **React/TypeScript SPA**: Modern frontend with real-time updates
+- **UI Components**: AIConsensusComplete, ConversationHistory, Sidebar, MarkdownRenderer
+- **Features**: Expandable responses, AI critique selection, response preference, web source display
+
+#### API Layer
+- **Django REST API v1**: RESTful endpoints with versioning
+- **Multi-Agent Orchestrator**: Coordinates parallel AI service calls and web search
+- **Rate Limiting**: Per-user rate limiting for web searches
+- **Context Management**: Conversation continuity and history tracking
+
+#### Web Search Layer
+- **Web Search Coordinator**: Intelligent search strategy with recency detection
+- **Google Custom Search API**: Real-time web search integration
+- **Redis Cache**: 15-minute TTL for search results and deduplication
+
+#### AI Services Layer
+- **AI Services Manager**: Unified interface for Claude, OpenAI, and Gemini
+- **Structured Summary Service**: Pydantic-based JSON schema validation
+- **AI Critique Service**: Comparative analysis of multiple AI responses
+- **Async Processing**: Parallel service calls for optimal performance
+
+#### Django Apps
+- **Accounts**: User authentication and management
+- **Conversations**: Conversation sessions, messages, and context
+- **Responses**: AI responses with token tracking and cost calculation
+- **AI Services**: Service configuration, queries, and task management
+
+#### Data Layer
+- **PostgreSQL**: Primary database with conversation_cost_view for accurate pricing
+- **Models**: Conversation, Message, AIQuery, AIResponse, AIService, ConversationContext
+- **Indexing**: Optimized queries with strategic database indexes
 
 
 ## Setup and Installation
@@ -229,6 +323,13 @@ graph TB
    - Security warnings are normal for development
    - For TailwindCSS compilation errors, ensure `@tailwindcss/postcss` is installed
 5. **Redis connection errors**: App works without Redis - cache is configured to use dummy backend for development
+6. **Dependency cache issues**: If you encounter npm dependency problems or need to reclaim disk space:
+   ```bash
+   cd frontend/frontend
+   rm -rf node_modules
+   npm ci  # Restores exact versions from package-lock.json
+   ```
+   The `node_modules/` directory is just a local install cache (not committed to git) and can be safely deleted and recreated anytime.
 
 **Required API Keys:**
 - **OpenAI**: Get from https://platform.openai.com/api-keys
