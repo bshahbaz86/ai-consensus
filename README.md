@@ -308,7 +308,6 @@ graph TB
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8001
-- **Demo Page**: http://localhost:8001/api/v1/demo/
 
 ### Troubleshooting
 
