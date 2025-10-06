@@ -70,21 +70,19 @@ def test_ai_services(request):
         chat_history = data.get('chat_history', '')
         conversation_id = data.get('conversation_id')  # Optional conversation link
 
-        # Create AIQuery for cost tracking (if conversation provided and has user)
+        # Create AIQuery for cost tracking when a conversation is provided
         ai_query = None
         if conversation_id:
             try:
                 conversation = Conversation.objects.get(id=conversation_id)
-                # Only create AIQuery if conversation has an associated user
-                if conversation.user:
-                    ai_query = AIQuery.objects.create(
-                        user=conversation.user,
-                        conversation=conversation,
-                        prompt=message,
-                        context={'chat_history': chat_history, 'use_web_search': use_web_search},
-                        status='processing',
-                        services_requested=services
-                    )
+                ai_query = AIQuery.objects.create(
+                    user=conversation.user,
+                    conversation=conversation,
+                    prompt=message,
+                    context={'chat_history': chat_history, 'use_web_search': use_web_search},
+                    status='processing',
+                    services_requested=services
+                )
             except Conversation.DoesNotExist:
                 pass  # Continue without query tracking if conversation not found
 

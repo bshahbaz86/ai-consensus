@@ -369,27 +369,21 @@ async def process_all_services_async(message: str, services: list, use_web_searc
     """
     Async helper that coordinates parallel LLM calls.
     """
-    # Create AIQuery for cost tracking (if conversation provided and has user)
+    # Create AIQuery for cost tracking if a conversation is provided
     ai_query = None
     if conversation_id:
         try:
-            # Fetch conversation with user relation selected
-            conversation = await sync_to_async(
-                lambda: Conversation.objects.select_related('user').get(id=conversation_id)
-            )()
-
-            # Access user in sync context
-            user = await sync_to_async(lambda: conversation.user)()
-
-            if user:
-                ai_query = await sync_to_async(AIQuery.objects.create)(
-                    user=user,
-                    conversation=conversation,
-                    prompt=message,
-                    context={'chat_history': chat_history, 'use_web_search': use_web_search},
-                    status='processing',
-                    services_requested=services
-                )
+            conversation = await sync_to_async(Conversation.objects.select_related('user').get)(
+                id=conversation_id
+            )
+            ai_query = await sync_to_async(AIQuery.objects.create)(
+                user=conversation.user,
+                conversation=conversation,
+                prompt=message,
+                context={'chat_history': chat_history, 'use_web_search': use_web_search},
+                status='processing',
+                services_requested=services
+            )
         except Exception as e:
             print(f"Failed to create AIQuery: {e}")
             import traceback
@@ -403,7 +397,11 @@ async def process_all_services_async(message: str, services: list, use_web_searc
     if use_web_search:
         try:
             web_search_coordinator = WebSearchCoordinator()
-            search_result = await web_search_coordinator.search(message)
+            search_result = await web_search_coordinator.search_for_query(
+                user_query=message,
+                user=None,
+                context={}
+            )
 
             if search_result.get('success', False) and search_result.get('results'):
                 search_summary = []
@@ -613,8 +611,9 @@ Please provide your synthesis now:"""
                         from uuid import UUID
                         conversation = Conversation.objects.get(id=UUID(conversation_id))
                         ai_query = AIQuery.objects.create(
+                            user=conversation.user,
                             conversation=conversation,
-                            query_text=f"Synthesis: {user_query[:100]}",
+                            prompt=f"Synthesis: {user_query[:100]}",
                             status='completed',
                             started_at=timezone.now(),
                             completed_at=timezone.now()
@@ -642,6 +641,9 @@ Please provide your synthesis now:"""
                             output_tokens=output_tokens,
                             tokens_used=total_tokens
                         )
+
+                        # Ensure conversation aggregates reflect the new cost entry
+                        conversation.update_conversation_metadata()
                     except Exception as e:
                         print(f"Failed to track synthesis cost: {e}")
 
@@ -683,6 +685,10 @@ def critique_compare(request):
         llm2_response = data.get('llm2_response', '')
         chat_history = data.get('chat_history', '')
         conversation_id = data.get('conversation_id')  # Optional for cost tracking
+
+        # DEBUG: Log received conversation_id
+        print(f"[CRITIQUE_COMPARE DEBUG] Received conversation_id: {conversation_id}")
+        print(f"[CRITIQUE_COMPARE DEBUG] Request data keys: {data.keys()}")
 
         if not all([user_query, llm1_name, llm1_response, llm2_name, llm2_response]):
             return JsonResponse({
@@ -783,17 +789,22 @@ Focus on helping improve future responses while maintaining objectivity in your 
 
             if critique_response['success']:
                 # Track cost if conversation_id provided
+                print(f"[CRITIQUE_COMPARE DEBUG] About to check conversation_id: {conversation_id}")
                 if conversation_id:
+                    print(f"[CRITIQUE_COMPARE DEBUG] conversation_id is truthy, attempting to track cost")
                     try:
                         from uuid import UUID
                         conversation = Conversation.objects.get(id=UUID(conversation_id))
+                        print(f"[CRITIQUE_COMPARE DEBUG] Found conversation: {conversation.id}")
                         ai_query = AIQuery.objects.create(
+                            user=conversation.user,
                             conversation=conversation,
-                            query_text=f"Critique: {user_query[:100]}",
+                            prompt=f"Critique: {user_query[:100]}",
                             status='completed',
                             started_at=timezone.now(),
                             completed_at=timezone.now()
                         )
+                        print(f"[CRITIQUE_COMPARE DEBUG] Created AIQuery: {ai_query.id}")
 
                         # Get service object
                         service_name = 'openai' if 'openai' in critique_provider.lower() else 'claude'
@@ -817,8 +828,16 @@ Focus on helping improve future responses while maintaining objectivity in your 
                             output_tokens=output_tokens,
                             tokens_used=total_tokens
                         )
+                        print(f"[CRITIQUE_COMPARE DEBUG] Created AIResponse for service: {service_name}")
+
+                        # Refresh conversation aggregates so cost updates propagate to the UI
+                        conversation.update_conversation_metadata()
                     except Exception as e:
-                        print(f"Failed to track critique cost: {e}")
+                        print(f"[CRITIQUE_COMPARE DEBUG] Failed to track critique cost: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"[CRITIQUE_COMPARE DEBUG] conversation_id is falsy, skipping cost tracking")
 
                 return JsonResponse({
                     'success': True,
@@ -999,8 +1018,9 @@ Provide a balanced, constructive reflection that demonstrates intellectual hones
                     from uuid import UUID
                     conversation = Conversation.objects.get(id=UUID(conversation_id))
                     ai_query = AIQuery.objects.create(
+                        user=conversation.user,
                         conversation=conversation,
-                        query_text=f"Cross-reflection: {user_query[:100]}",
+                        prompt=f"Cross-reflection: {user_query[:100]}",
                         status='completed',
                         started_at=timezone.now(),
                         completed_at=timezone.now()
@@ -1076,6 +1096,9 @@ Provide a balanced, constructive reflection that demonstrates intellectual hones
                             output_tokens=llm2_syn_output,
                             tokens_used=calculate_total_tokens(llm2_syn_input, llm2_syn_output)
                         )
+
+                    # Refresh conversation metadata so aggregated costs include these reflections
+                    conversation.update_conversation_metadata()
                 except Exception as e:
                     print(f"Failed to track cross-reflection cost: {e}")
 
