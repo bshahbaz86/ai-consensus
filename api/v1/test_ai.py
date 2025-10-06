@@ -485,6 +485,10 @@ async def process_all_services_async(message: str, services: list, use_web_searc
             ai_query.completed_at = timezone.now()
             ai_query.total_responses = len(processed_results)
             await sync_to_async(ai_query.save)()
+
+            # Update conversation stats to recalculate costs
+            if ai_query.conversation:
+                await sync_to_async(ai_query.conversation.update_conversation_metadata)()
         except Exception as e:
             print(f"Failed to update AIQuery: {e}")
 
