@@ -246,6 +246,28 @@ const AIConsensusComplete: React.FC = () => {
       setExpandedResponses(new Set());
       setSelectedForCritique(new Set());
       setPreferredResponses(new Set());
+      setPreviousExchangesExpanded({});
+      setPreviousExchangesSelected({});
+      setPreviousExchangesPreferred({});
+      setCritiqueExpanded(true);
+      setSynthesisExpanded(true);
+      setCrossReflectionExpanded(true);
+      setPreviousCritiqueResults({});
+      setPreviousCritiqueProviders({});
+      setLoadingPreviousCritique({});
+      setPreviousCritiqueExpanded({});
+      setPreviousSynthesisResults({});
+      setPreviousSynthesisProviders({});
+      setLoadingPreviousSynthesis({});
+      setPreviousSynthesisExpanded({});
+      setCrossReflectionResults([]);
+      setLoadingCrossReflection(false);
+      setPreviousCrossReflectionResults({});
+      setLoadingPreviousCrossReflection({});
+      setExpandedCrossReflections(new Set());
+      setPreviousExpandedCrossReflections({});
+      setPreferredCrossReflections(new Set());
+      setPreviousPreferredCrossReflections({});
 
       // Close sidebar
       setSidebarOpen(false);
@@ -468,17 +490,25 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingCritique(true);
 
     try {
+      console.log('[CRITIQUE DEBUG] currentConversationId:', currentConversationId);
+      console.log('[CRITIQUE DEBUG] selectedConversation?.id:', selectedConversation?.id);
+
+      const requestBody = {
+        user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
+        llm1_name: response1.service,
+        llm1_response: response1.content,
+        llm2_name: response2.service,
+        llm2_response: response2.content,
+        chat_history: '',
+        conversation_id: currentConversationId
+      };
+
+      console.log('[CRITIQUE DEBUG] Request body:', JSON.stringify(requestBody, null, 2));
+
       const response = await fetch('http://localhost:8000/api/v1/critique/compare/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
-          llm1_name: response1.service,
-          llm1_response: response1.content,
-          llm2_name: response2.service,
-          llm2_response: response2.content,
-          chat_history: ''
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const data = await response.json();
@@ -521,7 +551,8 @@ const AIConsensusComplete: React.FC = () => {
           llm1_response: response1.content,
           llm2_name: response2.service,
           llm2_response: response2.content,
-          chat_history: ''
+          chat_history: '',
+          conversation_id: currentConversationId
         })
       });
 
@@ -565,7 +596,8 @@ const AIConsensusComplete: React.FC = () => {
           llm1_response: response1.content,
           llm2_name: response2.service,
           llm2_response: response2.content,
-          chat_history: ''
+          chat_history: '',
+          conversation_id: currentConversationId
         })
       });
 
@@ -627,7 +659,8 @@ const AIConsensusComplete: React.FC = () => {
           llm1_response: response1.content,
           llm2_name: response2.service,
           llm2_response: response2.content,
-          chat_history: ''
+          chat_history: '',
+          conversation_id: currentConversationId
         })
       });
 
@@ -637,6 +670,8 @@ const AIConsensusComplete: React.FC = () => {
         setPreviousCritiqueResults(prev => ({...prev, [exchangeKey]: data.critique}));
         setPreviousCritiqueProviders(prev => ({...prev, [exchangeKey]: data.critique_provider || 'Unknown'}));
         setPreviousCritiqueExpanded(prev => ({...prev, [exchangeKey]: true})); // Default to expanded
+        // Refresh conversation list to show updated costs
+        setConversationRefreshTrigger(prev => prev + 1);
       } else {
         alert('Critique failed: ' + data.error);
       }
@@ -673,7 +708,8 @@ const AIConsensusComplete: React.FC = () => {
           llm1_response: response1.content,
           llm2_name: response2.service,
           llm2_response: response2.content,
-          chat_history: ''
+          chat_history: '',
+          conversation_id: currentConversationId
         })
       });
 
@@ -683,6 +719,8 @@ const AIConsensusComplete: React.FC = () => {
         setPreviousSynthesisResults(prev => ({...prev, [exchangeKey]: data.synthesis}));
         setPreviousSynthesisProviders(prev => ({...prev, [exchangeKey]: data.synthesis_provider || 'Unknown'}));
         setPreviousSynthesisExpanded(prev => ({...prev, [exchangeKey]: true})); // Default to expanded
+        // Refresh conversation list to show updated costs
+        setConversationRefreshTrigger(prev => prev + 1);
       } else {
         alert('Synthesis failed: ' + data.error);
       }
@@ -719,7 +757,8 @@ const AIConsensusComplete: React.FC = () => {
           llm1_response: response1.content,
           llm2_name: response2.service,
           llm2_response: response2.content,
-          chat_history: ''
+          chat_history: '',
+          conversation_id: currentConversationId
         })
       });
 
@@ -734,6 +773,8 @@ const AIConsensusComplete: React.FC = () => {
         }));
         setPreviousCrossReflectionResults(prev => ({...prev, [exchangeKey]: reflections}));
         setPreviousCrossReflectionExpanded(prev => ({...prev, [exchangeKey]: true})); // Default to expanded
+        // Refresh conversation list to show updated costs
+        setConversationRefreshTrigger(prev => prev + 1);
       } else {
         alert('Cross-reflection failed: ' + data.error);
       }
@@ -1280,7 +1321,7 @@ const AIConsensusComplete: React.FC = () => {
                                 </div>
                                 {reflection.synopsis && (
                                   <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                    <p className="text-sm text-gray-700 font-medium">Synopsis:</p>
+                                    <p className="text-sm text-gray-700 font-medium"></p>
                                     <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
                                   </div>
                                 )}
@@ -1607,7 +1648,7 @@ const AIConsensusComplete: React.FC = () => {
                       </div>
                       {reflection.synopsis && (
                         <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                          <p className="text-sm text-gray-700 font-medium">Synopsis:</p>
+                          <p className="text-sm text-gray-700 font-medium"></p>
                           <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
                         </div>
                       )}
