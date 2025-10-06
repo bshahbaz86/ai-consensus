@@ -1,7 +1,8 @@
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 import json
 import asyncio
 from apps.ai_services.services.factory import AIServiceFactory
@@ -12,6 +13,18 @@ from apps.responses.models import AIResponse
 from apps.conversations.models import Conversation
 from django.utils import timezone
 from asgiref.sync import sync_to_async
+
+
+def check_test_endpoints_enabled():
+    """
+    Check if test endpoints are enabled.
+    Raises JsonResponse with 403 status if disabled.
+    """
+    if not getattr(settings, 'ENABLE_TEST_AI_ENDPOINTS', False):
+        return JsonResponse({
+            'success': False,
+            'error': 'Test AI endpoints are disabled. Enable ENABLE_TEST_AI_ENDPOINTS in settings to use these diagnostic endpoints.'
+        }, status=403)
 async def generate_synopsis_with_same_ai(content: str, ai_service_name: str, api_key: str, model: str) -> dict:
     """
     Use the same AI service that generated the response to create an intelligent synopsis.
@@ -365,7 +378,7 @@ async def process_gemini(message: str, chat_history: str, web_search_context: st
         }
 
 
-async def process_all_services_async(message: str, services: list, use_web_search: bool, chat_history: str, conversation_id: str):
+async def process_all_services_async(message: str, services: list, use_web_search: bool, chat_history: str, conversation_id: str, user_location: dict = None):
     """
     Async helper that coordinates parallel LLM calls.
     """
@@ -396,12 +409,25 @@ async def process_all_services_async(message: str, services: list, use_web_searc
 
     if use_web_search:
         try:
-            web_search_coordinator = WebSearchCoordinator()
-            search_result = await web_search_coordinator.search_for_query(
-                user_query=message,
-                user=None,
-                context={}
-            )
+            print(f"[WEB SEARCH] Web search enabled for query: {message[:50]}...")
+            print(f"[WEB SEARCH] User location: {user_location}")
+
+            # Add overall timeout for web search
+            async def search_with_timeout():
+                web_search_coordinator = WebSearchCoordinator()
+                return await web_search_coordinator.search_for_query(
+                    user_query=message,
+                    user=None,
+                    context={},
+                    user_location=user_location
+                )
+
+            # Wrap in timeout - fail gracefully if takes too long
+            search_result = await asyncio.wait_for(search_with_timeout(), timeout=15.0)
+
+            print(f"[WEB SEARCH] Search result success: {search_result.get('success')}")
+            print(f"[WEB SEARCH] Search result error: {search_result.get('error')}")
+            print(f"[WEB SEARCH] Results count: {len(search_result.get('results', []))}")
 
             if search_result.get('success', False) and search_result.get('results'):
                 search_summary = []
@@ -412,8 +438,15 @@ async def process_all_services_async(message: str, services: list, use_web_searc
                         f"   {result.get('content', 'No content')[:200]}...\n"
                     )
                 web_search_context = '\n'.join(search_summary)
+                print(f"[WEB SEARCH] Web search context created with {len(search_summary)} results")
+            else:
+                print(f"[WEB SEARCH] No valid search results to process")
+        except asyncio.TimeoutError:
+            print(f"[WEB SEARCH] Web search timed out after 15 seconds - continuing without search")
         except Exception as e:
-            print(f"Web search failed: {str(e)}")
+            print(f"[WEB SEARCH] Web search failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     # Build list of coroutines for requested services
     tasks = []
@@ -458,19 +491,28 @@ async def process_all_services_async(message: str, services: list, use_web_searc
     return processed_results
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def test_ai_services(request):
     """
     Parallelized test endpoint for AI service integration.
     POST /api/v1/test-ai/
     Body: {"message": "test question", "services": ["claude", "openai"], "use_web_search": true}
+
+    SECURITY: This endpoint is for testing/diagnostics only.
+    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
     """
+    # Check if test endpoints are enabled
+    disabled_response = check_test_endpoints_enabled()
+    if disabled_response:
+        return disabled_response
+
     try:
         data = json.loads(request.body)
         message = data.get('message', 'Hello, how are you?')
         services = data.get('services', ['claude', 'openai', 'gemini'])
         use_web_search = data.get('use_web_search', False)
+        user_location = data.get('user_location')
         chat_history = data.get('chat_history', '')
         conversation_id = data.get('conversation_id')
 
@@ -481,7 +523,8 @@ def test_ai_services(request):
                 services=services,
                 use_web_search=use_web_search,
                 chat_history=chat_history,
-                conversation_id=conversation_id
+                conversation_id=conversation_id,
+                user_location=user_location
             )
         )
 
@@ -496,12 +539,20 @@ def test_ai_services(request):
             'success': False,
             'error': str(e)
         }, status=500)
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def combine_responses(request):
     """
     Combine two LLM responses into a unified synthesis.
+
+    SECURITY: This endpoint is for testing/diagnostics only.
+    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
     """
+    # Check if test endpoints are enabled
+    disabled_response = check_test_endpoints_enabled()
+    if disabled_response:
+        return disabled_response
+
     try:
         data = json.loads(request.body)
         user_query = data.get('user_query', '')
@@ -670,12 +721,20 @@ Please provide your synthesis now:"""
         }, status=500)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def critique_compare(request):
     """
     Compare two LLM responses using AI critique framework.
+
+    SECURITY: This endpoint is for testing/diagnostics only.
+    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
     """
+    # Check if test endpoints are enabled
+    disabled_response = check_test_endpoints_enabled()
+    if disabled_response:
+        return disabled_response
+
     try:
         data = json.loads(request.body)
         user_query = data.get('user_query', '')
@@ -862,13 +921,21 @@ Focus on helping improve future responses while maintaining objectivity in your 
         }, status=500)
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def cross_reflect(request):
     """
     Generate cross-reflections where each LLM reflects on the other's response.
     Each LLM receives the peer's answer and provides a reflection/critique.
+
+    SECURITY: This endpoint is for testing/diagnostics only.
+    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
     """
+    # Check if test endpoints are enabled
+    disabled_response = check_test_endpoints_enabled()
+    if disabled_response:
+        return disabled_response
+
     try:
         data = json.loads(request.body)
         user_query = data.get('user_query', '')

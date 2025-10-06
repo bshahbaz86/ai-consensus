@@ -26,6 +26,7 @@ const AIConsensusComplete: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [selectedServices, setSelectedServices] = useState(['claude', 'gemini']);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [userLocation, setUserLocation] = useState<{city?: string; region?: string; country?: string; timezone?: string} | null>(null);
   const [expandedResponses, setExpandedResponses] = useState<Set<number>>(new Set());
   const [selectedForCritique, setSelectedForCritique] = useState<Set<number>>(new Set());
   const [preferredResponses, setPreferredResponses] = useState<Set<number>>(new Set());
@@ -315,6 +316,52 @@ const AIConsensusComplete: React.FC = () => {
     }
   };
 
+  // Function to get user's geolocation
+  const getUserLocation = async (): Promise<{city?: string; region?: string; country?: string; timezone?: string} | null> => {
+    // Get timezone from browser
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    // Try to get approximate location from browser geolocation API
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        console.log('Geolocation not supported, using timezone only');
+        resolve({ timezone });
+        return;
+      }
+
+      // Set a shorter timeout for the promise itself
+      const timeoutId = setTimeout(() => {
+        console.log('Geolocation timeout, using timezone only');
+        resolve({ timezone });
+      }, 2000); // 2 second timeout
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          clearTimeout(timeoutId);
+          try {
+            // Use reverse geocoding API to get location info
+            // For now, we'll just use timezone and let Reka infer location
+            // You could add a reverse geocoding service here if needed
+            console.log('Geolocation obtained (using timezone only for now)');
+            resolve({ timezone });
+          } catch (error) {
+            console.error('Error getting location details:', error);
+            resolve({ timezone });
+          }
+        },
+        (error) => {
+          clearTimeout(timeoutId);
+          console.log('Geolocation permission denied or error, using timezone only:', error.message);
+          resolve({ timezone });
+        },
+        {
+          timeout: 1500,
+          maximumAge: 300000, // Cache for 5 minutes
+        }
+      );
+    });
+  };
+
   const services = [
     { id: 'claude', name: 'Claude', color: '#FF6B35' },
     { id: 'openai', name: 'OpenAI', color: '#00A67E' },
@@ -397,19 +444,41 @@ const AIConsensusComplete: React.FC = () => {
     }
 
     try {
+      // Get user location if web search is enabled
+      let locationData = null;
+      if (webSearchEnabled) {
+        console.log('[FRONTEND] Web search is enabled, getting location...');
+        locationData = await getUserLocation();
+        if (locationData) {
+          setUserLocation(locationData);
+          console.log('[FRONTEND] Location data:', locationData);
+        }
+      } else {
+        console.log('[FRONTEND] Web search is NOT enabled');
+      }
+
       // Build chat history string for API
       const chatHistoryString = conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+
+      const requestBody = {
+        message: currentQuestion,
+        services: selectedServices,
+        use_web_search: webSearchEnabled,
+        user_location: locationData,
+        chat_history: chatHistoryString,
+        conversation_id: currentConversationId
+      };
+
+      console.log('[FRONTEND] Sending request to backend:', {
+        ...requestBody,
+        message: requestBody.message.substring(0, 50) + '...',
+        chat_history: requestBody.chat_history ? 'present' : 'empty'
+      });
 
       const response = await fetch('http://localhost:8000/api/v1/test-ai/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: currentQuestion,
-          services: selectedServices,
-          use_web_search: webSearchEnabled,
-          chat_history: chatHistoryString,
-          conversation_id: currentConversationId
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const data = await response.json();

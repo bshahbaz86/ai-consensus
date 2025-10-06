@@ -129,10 +129,14 @@ class MultiAgentOrchestrator:
         if context and context.get('web_search', {}).get('enabled', False):
             logger.info(f"Web search enabled for query: {prompt[:50]}...")
             try:
+                # Extract user location from context if provided
+                user_location = context.get('web_search', {}).get('user_location')
+
                 search_result = await self.web_search_coordinator.search_for_query(
                     user_query=prompt,
                     user=user,
-                    context=context
+                    context=context,
+                    user_location=user_location
                 )
                 
                 if search_result['success']:

@@ -224,7 +224,15 @@ CLAUDE_API_KEY = config('CLAUDE_API_KEY', default='')
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 
-# Google Custom Search API Configuration
+# Test/Diagnostic Endpoints Configuration
+# SECURITY: These endpoints should only be enabled in development
+# Set to False in production to prevent unauthorized AI API usage
+ENABLE_TEST_AI_ENDPOINTS = config('ENABLE_TEST_AI_ENDPOINTS', default=DEBUG, cast=bool)
+
+# Reka API Configuration
+REKA_API_KEY = config('REKA_API_KEY', default='')
+
+# Google Custom Search API Configuration (deprecated - using Reka now)
 GOOGLE_CSE_API_KEY = config('GOOGLE_CSE_API_KEY', default='')
 GOOGLE_CSE_CX = config('GOOGLE_CSE_CX', default='')
 

@@ -84,10 +84,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             context = data.get('context', {})
             selected_services = data.get('services', None)
             use_web_search = data.get('use_web_search', False)
-            
+            user_location = data.get('user_location')
+
             # Add web search flag to context
             if use_web_search:
                 context['web_search'] = {'enabled': True}
+                # Add user location if provided
+                if user_location:
+                    context['web_search']['user_location'] = user_location
             
             result = await orchestrator.process_user_query(
                 user=self.user,

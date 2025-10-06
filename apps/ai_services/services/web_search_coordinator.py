@@ -46,18 +46,19 @@ class WebSearchCoordinator:
         self,
         user_query: str,
         user: Optional[User] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        user_location: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
-        Main entry point for web search. Implements the 2-search strategy:
-        1. First search with raw query
-        2. Optional second search if recency is important and first search lacks recent results
-        
+        Main entry point for web search using Reka Research API.
+        Reka handles intelligent search with max 2 API calls internally.
+
         Args:
             user_query: The user's search query
             user: User object for rate limiting
             context: Additional context that might influence search strategy
-            
+            user_location: Optional location data (city, region, country, timezone)
+
         Returns:
             Dictionary containing search results and metadata
         """
@@ -87,7 +88,7 @@ class WebSearchCoordinator:
             return await self._active_searches[cache_key]
         
         # Create future for this search to handle concurrent requests
-        search_future = asyncio.create_task(self._perform_search(user_query, user, context))
+        search_future = asyncio.create_task(self._perform_search(user_query, user, context, user_location))
         self._active_searches[cache_key] = search_future
         
         try:
@@ -110,19 +111,19 @@ class WebSearchCoordinator:
         self,
         user_query: str,
         user: Optional[User],
-        context: Optional[Dict[str, Any]]
+        context: Optional[Dict[str, Any]],
+        user_location: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
         """
-        Performs the actual search strategy with up to 2 API calls.
+        Performs Google Custom Search (up to 2 searches with recency detection).
         """
         search_calls_made = 0
         all_results = []
         sources = []
         errors = []
-        
+
         try:
             async with self.client as search_client:
-                
                 # First search: Raw user query
                 logger.info(f"Performing first search for: {user_query[:50]}...")
                 first_search = await search_client.search(
@@ -130,32 +131,32 @@ class WebSearchCoordinator:
                     num_results=5
                 )
                 search_calls_made += 1
-                
+
                 if first_search['success']:
                     all_results.extend(first_search['results'])
                     logger.info(f"First search returned {len(first_search['results'])} results")
                 else:
                     errors.append(f"First search failed: {first_search.get('error', 'Unknown error')}")
                     logger.warning(f"First search failed: {first_search.get('error')}")
-                
+
                 # Determine if we need a second search
                 needs_recency = self._assess_recency_need(user_query, context)
                 has_recent_results = self._has_recent_results(all_results) if all_results else False
-                
+
                 # Second search: Only if recency is important and first search lacks recent results
                 if needs_recency and not has_recent_results and search_calls_made < 2:
                     logger.info(f"Performing second search with recency focus...")
-                    
+
                     # Enhance query for recency
                     recent_query = self._enhance_query_for_recency(user_query)
-                    
+
                     second_search = await search_client.search(
                         query=recent_query,
                         num_results=5,
                         date_restrict='m1'  # Past month
                     )
                     search_calls_made += 1
-                    
+
                     if second_search['success']:
                         # Merge results, prioritizing newer content
                         recent_results = second_search['results']
@@ -164,12 +165,12 @@ class WebSearchCoordinator:
                     else:
                         errors.append(f"Second search failed: {second_search.get('error', 'Unknown error')}")
                         logger.warning(f"Second search failed: {second_search.get('error')}")
-                
+
                 # Process results for AI consumption
                 if all_results:
                     processed_results = self._process_results_for_ai(all_results, user_query)
                     sources = self._extract_sources_metadata(all_results)
-                    
+
                     return {
                         'success': True,
                         'query': user_query,

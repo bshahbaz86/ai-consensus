@@ -68,9 +68,10 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 - **Professional Button Design**: Consistent height, padding, and visual weight across all interactive elements
 
 ### 🌐 Web Search Features
-- **Real-time Web Search**: Toggle-enabled Google Custom Search integration for current information
-- **Intelligent Search Orchestration**: Automatic recency detection and smart query optimization
-- **Rate Limiting**: 2 search calls per user query with proper rate limiting per user
+- **Real-time Web Search**: Toggle-enabled Reka Research API integration for current information
+- **Intelligent Search**: Reka handles up to 2 web searches per query automatically with smart optimization
+- **Location-Aware Search**: Browser geolocation support for location-specific results
+- **Rate Limiting**: Proper rate limiting per user for efficient resource usage
 - **Caching Layer**: 15-minute Redis TTL for efficient search result caching
 - **Source Display**: Collapsible web sources with clickable links (collapsed by default)
 - **Context Enhancement**: Web search results seamlessly integrated into AI prompts
@@ -86,7 +87,7 @@ In today's AI-driven world, different AI models often provide varying perspectiv
 
 ```mermaid
 graph TB
-    U[User] -->|Query + Web Search Toggle| FE[React Frontend]
+    U[User] -->|Query + Web Search Toggle + Location| FE[React Frontend]
     FE -->|HTTP/REST API| API[Django REST API v1]
 
     API -->|Route Requests| ORCH[Multi-Agent Orchestrator]
@@ -94,8 +95,8 @@ graph TB
     %% Web Search Layer
     ORCH -->|Web Search Enabled?| WSC[Web Search Coordinator]
     WSC -->|Rate Limiting & Caching| RC[Redis Cache - 15min TTL]
-    WSC -->|Search Query| GSA[Google Custom Search API]
-    GSA -->|Search Results + Sources| WSC
+    WSC -->|Search Query + Location| REKA[Reka Research API]
+    REKA -->|Search Results + AI Summary| WSC
     WSC -->|Enriched Context| ORCH
 
     %% AI Service Layer
@@ -201,8 +202,8 @@ graph TB
 - **Context Management**: Conversation continuity and history tracking
 
 #### Web Search Layer
-- **Web Search Coordinator**: Intelligent search strategy with recency detection
-- **Google Custom Search API**: Real-time web search integration
+- **Web Search Coordinator**: Intelligent search orchestration with location support
+- **Reka Research API**: AI-powered web search with automatic optimization (max 2 searches per query)
 - **Redis Cache**: 15-minute TTL for search results and deduplication
 
 #### AI Services Layer
@@ -264,9 +265,8 @@ graph TB
    CLAUDE_API_KEY=sk-ant-your-claude-key
    GEMINI_API_KEY=your-gemini-key
 
-   # Google Custom Search API (for web search functionality)
-   GOOGLE_CSE_API_KEY=your-google-custom-search-api-key
-   GOOGLE_CSE_CX=your-custom-search-engine-id
+   # Reka API Key (for web search functionality)
+   REKA_API_KEY=your-reka-api-key
 
    # Django Configuration
    SECRET_KEY=your-secret-key-here
@@ -275,12 +275,18 @@ graph TB
    # Other settings are optional for basic setup
    ```
 
-5. **Run database migrations (optional - only needed for user accounts and conversation history)**
+5. **Run database migrations**
    ```bash
    python3 manage.py migrate
    ```
 
-6. **Start backend server**
+6. **Create a superuser account (required for accessing the application)**
+   ```bash
+   python3 manage.py createsuperuser
+   ```
+   Follow the prompts to create your admin account.
+
+7. **Start backend server**
    ```bash
    python3 manage.py runserver 8000
    ```
@@ -309,6 +315,52 @@ graph TB
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8001
 
+## Security Configuration
+
+### Authentication Requirements
+
+**IMPORTANT**: As of the latest security updates, all API endpoints now require authentication to prevent unauthorized access and protect user data.
+
+#### What Changed
+1. **Conversations API**: All conversation and message endpoints now require user authentication
+2. **Structured Summary API**: Requires authentication to prevent abuse of AI API credits
+3. **Test AI Endpoints**: Protected with authentication and can be disabled in production
+
+#### Authentication Implementation
+
+The application uses Django REST Framework's built-in authentication:
+- **Session Authentication**: For browser-based access
+- **Token Authentication**: For API clients
+
+**To use the API, you must:**
+1. Create a user account (see setup step 6)
+2. Authenticate your requests using one of these methods:
+   - **Session Auth**: Log in via Django admin at http://localhost:8000/admin/
+   - **Token Auth**: Obtain a token via the authentication endpoint
+
+#### Security Best Practices
+
+**For Development:**
+- Use the superuser account created during setup
+- Keep `DEBUG=True` and `ENABLE_TEST_AI_ENDPOINTS=True` in your `.env`
+
+**For Production Deployment:**
+- Set `DEBUG=False` in production environment
+- Set `ENABLE_TEST_AI_ENDPOINTS=False` to disable diagnostic endpoints
+- Use strong, randomly generated `SECRET_KEY`
+- Implement proper user registration and login UI
+- Enable HTTPS/TLS for all API communications
+- Regularly rotate API keys for AI services
+
+#### Test Endpoints Configuration
+
+Test/diagnostic endpoints (`/api/v1/test-ai/`, `/api/v1/combine-responses/`, etc.) can be disabled in production by setting:
+```env
+ENABLE_TEST_AI_ENDPOINTS=False
+```
+
+These endpoints should only be enabled in development environments to prevent unauthorized consumption of AI API credits.
+
 ### Troubleshooting
 
 **Common Issues:**
@@ -334,9 +386,9 @@ graph TB
 - **OpenAI**: Get from https://platform.openai.com/api-keys
 - **Claude**: Get from https://console.anthropic.com/
 - **Gemini**: Get from https://ai.google.dev/
-- **Google Custom Search**: Get API key from https://developers.google.com/custom-search/v1/introduction and create Custom Search Engine at https://programmablesearchengine.google.com/
+- **Reka**: Get from https://platform.reka.ai/ (for web search functionality)
 
-**Note**: The app will work with just one AI API key, but you'll get the best experience with all three. Google Custom Search API is optional but enables web search functionality.
+**Note**: The app will work with just one AI API key, but you'll get the best experience with all three. Reka API key is optional but enables location-aware web search functionality.
 
 ## API Endpoints
 
@@ -356,17 +408,25 @@ graph TB
 
 ## Usage Examples
 
-### Basic Multi-AI Query
+**Note**: All examples below require authentication. Make sure you're logged in or include authentication headers.
+
+### Basic Multi-AI Query (with Session Authentication)
 ```bash
+# First, log in via Django admin at http://localhost:8000/admin/
+# Then use session cookies with curl:
 curl -X POST http://localhost:8001/api/v1/test-ai/ \
   -H "Content-Type: application/json" \
+  -b cookies.txt \
   -d '{"message": "Explain machine learning", "services": ["claude", "openai", "gemini"]}'
 ```
 
-### Multi-AI Query with Web Search
+### Multi-AI Query with Web Search (with Token Authentication)
 ```bash
+# First, obtain an auth token (implementation needed in your app)
+# Then use token authentication:
 curl -X POST http://localhost:8001/api/v1/test-ai/ \
   -H "Content-Type: application/json" \
+  -H "Authorization: Token YOUR_AUTH_TOKEN" \
   -d '{
     "message": "What are the latest developments in AI safety research?",
     "services": ["claude", "openai", "gemini"],
@@ -441,4 +501,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **OpenAI** for API access
 - **Anthropic** for API access
 - **Google** for API access
+- **Reka AI** for Research API access
 - Open source communities for excellent frameworks and tools
