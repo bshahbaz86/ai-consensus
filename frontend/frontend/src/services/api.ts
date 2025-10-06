@@ -77,6 +77,26 @@ class ApiService {
     return null;
   }
 
+  /**
+   * Ensure CSRF token is available by making a GET request to Django.
+   * This must be called before any POST/PUT/DELETE requests.
+   */
+  async ensureCsrfToken(): Promise<void> {
+    // Check if we already have a CSRF token
+    if (this.getCsrfToken()) {
+      return;
+    }
+
+    // Make a GET request to obtain the CSRF token cookie
+    // We'll use the conversations endpoint which doesn't require any specific params
+    try {
+      await this.request<PaginatedResponse<Conversation>>('/conversations/?page=1');
+    } catch (error) {
+      console.error('Failed to obtain CSRF token:', error);
+      throw error;
+    }
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -91,6 +111,9 @@ class ApiService {
     const csrfToken = this.getCsrfToken();
     if (csrfToken && options.method && options.method !== 'GET') {
       headers['X-CSRFToken'] = csrfToken;
+      console.log('[API] Adding CSRF token to request:', endpoint);
+    } else if (!csrfToken && options.method && options.method !== 'GET') {
+      console.warn('[API] No CSRF token found for non-GET request:', endpoint);
     }
 
     // Add any additional headers from options

@@ -121,6 +121,9 @@ const AIConsensusComplete: React.FC = () => {
 
     const initializeConversation = async () => {
       try {
+        // Ensure CSRF token is available before making POST requests
+        await apiService.ensureCsrfToken();
+
         const newConversation = await apiService.createConversation({
           title: 'New AI Consensus Chat',
           agent_mode: 'standard'
@@ -498,6 +501,8 @@ const AIConsensusComplete: React.FC = () => {
       });
 
       const csrfToken = getCsrfToken();
+      console.log('[FRONTEND] CSRF Token:', csrfToken ? 'found' : 'NOT FOUND');
+      console.log('[FRONTEND] All cookies:', document.cookie);
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
