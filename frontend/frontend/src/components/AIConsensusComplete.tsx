@@ -20,6 +20,19 @@ interface WebSearchSource {
   snippet?: string;
 }
 
+// Helper function to get CSRF token from cookies
+const getCsrfToken = (): string | null => {
+  const name = 'csrftoken';
+  const cookies = document.cookie.split(';');
+  for (let cookie of cookies) {
+    const [cookieName, cookieValue] = cookie.trim().split('=');
+    if (cookieName === name) {
+      return cookieValue;
+    }
+  }
+  return null;
+};
+
 const AIConsensusComplete: React.FC = () => {
   const [question, setQuestion] = useState('');
   const [responses, setResponses] = useState<AIResponse[]>([]);
@@ -286,9 +299,17 @@ const AIConsensusComplete: React.FC = () => {
 
     try {
       // Using direct fetch since we don't have a messages endpoint in apiService yet
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch(`http://localhost:8000/api/v1/conversations/${currentConversationId}/messages/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           role,
@@ -476,9 +497,17 @@ const AIConsensusComplete: React.FC = () => {
         chat_history: requestBody.chat_history ? 'present' : 'empty'
       });
 
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch('http://localhost:8000/api/v1/test-ai/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify(requestBody)
       });
@@ -576,9 +605,17 @@ const AIConsensusComplete: React.FC = () => {
 
       console.log('[CRITIQUE DEBUG] Request body:', JSON.stringify(requestBody, null, 2));
 
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch('http://localhost:8000/api/v1/critique/compare/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify(requestBody)
       });
@@ -614,9 +651,17 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingSynthesis(true);
 
     try {
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
@@ -660,9 +705,17 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingCrossReflection(true);
 
     try {
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
@@ -724,9 +777,17 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousCritique(prev => ({...prev, [exchangeKey]: true}));
 
     try {
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch('http://localhost:8000/api/v1/critique/compare/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           user_query: exchange.question,
@@ -774,9 +835,17 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: true}));
 
     try {
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           user_query: exchange.question,
@@ -824,9 +893,17 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: true}));
 
     try {
+      const csrfToken = getCsrfToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (csrfToken) {
+        headers['X-CSRFToken'] = csrfToken;
+      }
+
       const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           user_query: exchange.question,

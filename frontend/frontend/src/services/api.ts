@@ -65,6 +65,18 @@ class ApiService {
     this.token = localStorage.getItem('auth_token');
   }
 
+  private getCsrfToken(): string | null {
+    const name = 'csrftoken';
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+      const [cookieName, cookieValue] = cookie.trim().split('=');
+      if (cookieName === name) {
+        return cookieValue;
+      }
+    }
+    return null;
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -74,6 +86,12 @@ class ApiService {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+
+    // Add CSRF token for non-GET requests
+    const csrfToken = this.getCsrfToken();
+    if (csrfToken && options.method && options.method !== 'GET') {
+      headers['X-CSRFToken'] = csrfToken;
+    }
 
     // Add any additional headers from options
     if (options.headers) {
