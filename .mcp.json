@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "node",
+      "args": [
+        "/Users/behzadshahbaz/mcp-database-server/dist/src/index.js",
+        "/Users/behzadshahbaz/Desktop/chat-ai-app/db.sqlite3"
+      ]
+    }
+  }
+}

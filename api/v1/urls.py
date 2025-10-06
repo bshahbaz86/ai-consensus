@@ -5,7 +5,6 @@ Routes for the REST API endpoints.
 """
 from django.urls import path, include
 from .test_ai import test_ai_services, critique_compare, combine_responses, cross_reflect
-from .demo_view import demo_view
 
 app_name = 'api_v1'
 
@@ -18,5 +17,4 @@ urlpatterns = [
     path('critique/compare/', critique_compare, name='critique_compare'),
     path('critique/combine/', combine_responses, name='combine_responses'),
     path('critique/cross/', cross_reflect, name='cross_reflect'),
-    path('demo/', demo_view, name='demo'),
 ]

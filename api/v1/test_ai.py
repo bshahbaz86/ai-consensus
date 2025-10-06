@@ -6,53 +6,463 @@ import json
 import asyncio
 from apps.ai_services.services.factory import AIServiceFactory
 from apps.ai_services.services.web_search_coordinator import WebSearchCoordinator
-# Removed langchain imports - agent functionality has been removed
-
-
-async def generate_synopsis_with_same_ai(content: str, ai_service_name: str, api_key: str, model: str) -> str:
+from apps.ai_services.utils.token_extractor import extract_tokens, calculate_total_tokens
+from apps.ai_services.models import AIService, AIQuery
+from apps.responses.models import AIResponse
+from apps.conversations.models import Conversation
+from django.utils import timezone
+from asgiref.sync import sync_to_async
+async def generate_synopsis_with_same_ai(content: str, ai_service_name: str, api_key: str, model: str) -> dict:
     """
     Use the same AI service that generated the response to create an intelligent synopsis.
-    This ensures each AI uses its own intelligence to summarize its own response.
+    Returns dict with 'synopsis' text and 'metadata' for token tracking.
     """
     try:
-        # Create AI service instance
         ai_service = AIServiceFactory.create_service(ai_service_name.lower(), api_key, model=model)
-        
-        # Create synopsis prompt for the AI
+
         synopsis_prompt = f"""Please provide a concise, intelligent 35-45 word synopsis of your previous response that captures the key insights and main points:
 
 {content[:800]}
 
 Guidelines:
-- Focus on the most important insights and conclusions  
+- Focus on the most important insights and conclusions
 - Use clear, professional language
 - Avoid unnecessary introductory phrases
 - Make every word count
 - Aim for exactly 35-45 words"""
 
-        # Get synopsis from the same AI service
         result = await ai_service.generate_response(synopsis_prompt)
-        
+
         if result.get('success'):
             synopsis = result.get('content', 'Unable to generate synopsis')
-            # Clean up the synopsis - remove any extraneous formatting
             words = synopsis.strip().split()
-            if len(words) > 50:  # Ensure it's not too long
+            if len(words) > 50:
                 synopsis = ' '.join(words[:45]) + '...'
-            return synopsis
+            return {'synopsis': synopsis, 'metadata': result.get('metadata', {}), 'success': True}
         else:
-            return f"Synopsis generation failed: {result.get('error', 'Unknown error')}"
-            
+            return {'synopsis': f"Synopsis generation failed: {result.get('error', 'Unknown error')}", 'metadata': {}, 'success': False}
+
     except Exception as e:
         print(f"Error generating synopsis with same AI: {str(e)}")
-        return "Synopsis generation failed"
+        return {'synopsis': "Synopsis generation failed", 'metadata': {}, 'success': False}
 
 
-@csrf_exempt 
+async def process_claude(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query):
+    """Process Claude request with main response and synopsis generation."""
+    try:
+        claude_service = AIServiceFactory.create_service(
+            'claude',
+            settings.CLAUDE_API_KEY,
+            model='claude-sonnet-4-20250514'
+        )
+
+        # Prepare context
+        context = {}
+        enhanced_message = message
+
+        if chat_history:
+            enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
+
+        if web_search_context and use_web_search and search_result and search_result.get('success', False):
+            context['web_search'] = {
+                'enabled': True,
+                'results': search_result['results']
+            }
+            if chat_history:
+                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+            else:
+                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+
+        # Get main response
+        claude_response = await claude_service.generate_response(enhanced_message, context)
+
+        # Generate synopsis
+        synopsis = "No synopsis available"
+        synopsis_result = None
+        if claude_response['success'] and claude_response['content']:
+            synopsis_result = await generate_synopsis_with_same_ai(
+                claude_response['content'],
+                'claude',
+                settings.CLAUDE_API_KEY,
+                'claude-sonnet-4-20250514'
+            )
+            synopsis = synopsis_result.get('synopsis', 'No synopsis available')
+
+        # Extract tokens
+        input_tokens, output_tokens = extract_tokens(
+            claude_response.get('metadata', {}),
+            'claude'
+        )
+        total_tokens = calculate_total_tokens(input_tokens, output_tokens)
+
+        # Create AIResponse records
+        if ai_query:
+            try:
+                claude_service_obj = await sync_to_async(AIService.objects.get)(name='claude')
+
+                # Main response record
+                await sync_to_async(AIResponse.objects.create)(
+                    query=ai_query,
+                    service=claude_service_obj,
+                    content=claude_response['content'],
+                    raw_response=claude_response.get('metadata', {}),
+                    summary=synopsis,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    tokens_used=total_tokens
+                )
+
+                # Synopsis generation record
+                if synopsis_result and synopsis_result.get('success'):
+                    synopsis_input_tokens, synopsis_output_tokens = extract_tokens(
+                        synopsis_result.get('metadata', {}),
+                        'claude'
+                    )
+                    synopsis_total_tokens = calculate_total_tokens(synopsis_input_tokens, synopsis_output_tokens)
+                    await sync_to_async(AIResponse.objects.create)(
+                        query=ai_query,
+                        service=claude_service_obj,
+                        content=synopsis,
+                        raw_response=synopsis_result.get('metadata', {}),
+                        summary='Synopsis generation call',
+                        input_tokens=synopsis_input_tokens,
+                        output_tokens=synopsis_output_tokens,
+                        tokens_used=synopsis_total_tokens
+                    )
+            except Exception as e:
+                print(f"Failed to create AIResponse for Claude: {e}")
+
+        return {
+            'service': 'Claude',
+            'success': claude_response['success'],
+            'content': claude_response['content'],
+            'synopsis': synopsis,
+            'input_tokens': input_tokens,
+            'output_tokens': output_tokens,
+            'tokens_used': total_tokens,
+            'error': claude_response.get('error')
+        }
+
+    except Exception as e:
+        return {
+            'service': 'Claude',
+            'success': False,
+            'content': None,
+            'synopsis': 'Synopsis generation failed',
+            'error': str(e)
+        }
+
+
+async def process_openai(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query):
+    """Process OpenAI request with main response and synopsis generation."""
+    try:
+        openai_service = AIServiceFactory.create_service(
+            'openai',
+            settings.OPENAI_API_KEY,
+            model='gpt-4o'
+        )
+
+        # Prepare context
+        context = {}
+        enhanced_message = message
+
+        if chat_history:
+            enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
+
+        if web_search_context and use_web_search and search_result and search_result.get('success', False):
+            context['web_search'] = {
+                'enabled': True,
+                'results': search_result['results']
+            }
+            if chat_history:
+                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+            else:
+                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+
+        # Get main response
+        openai_response = await openai_service.generate_response(enhanced_message, context)
+
+        # Generate synopsis
+        synopsis = "No synopsis available"
+        synopsis_result = None
+        if openai_response['success'] and openai_response['content']:
+            synopsis_result = await generate_synopsis_with_same_ai(
+                openai_response['content'],
+                'openai',
+                settings.OPENAI_API_KEY,
+                'gpt-4o'
+            )
+            synopsis = synopsis_result.get('synopsis', 'No synopsis available')
+
+        # Extract tokens
+        input_tokens, output_tokens = extract_tokens(
+            openai_response.get('metadata', {}),
+            'openai'
+        )
+        total_tokens = calculate_total_tokens(input_tokens, output_tokens)
+
+        # Create AIResponse records
+        if ai_query:
+            try:
+                openai_service_obj = await sync_to_async(AIService.objects.get)(name='openai')
+
+                # Main response record
+                await sync_to_async(AIResponse.objects.create)(
+                    query=ai_query,
+                    service=openai_service_obj,
+                    content=openai_response['content'],
+                    raw_response=openai_response.get('metadata', {}),
+                    summary=synopsis,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    tokens_used=total_tokens
+                )
+
+                # Synopsis generation record
+                if synopsis_result and synopsis_result.get('success'):
+                    synopsis_input_tokens, synopsis_output_tokens = extract_tokens(
+                        synopsis_result.get('metadata', {}),
+                        'openai'
+                    )
+                    synopsis_total_tokens = calculate_total_tokens(synopsis_input_tokens, synopsis_output_tokens)
+                    await sync_to_async(AIResponse.objects.create)(
+                        query=ai_query,
+                        service=openai_service_obj,
+                        content=synopsis,
+                        raw_response=synopsis_result.get('metadata', {}),
+                        summary='Synopsis generation call',
+                        input_tokens=synopsis_input_tokens,
+                        output_tokens=synopsis_output_tokens,
+                        tokens_used=synopsis_total_tokens
+                    )
+            except Exception as e:
+                print(f"Failed to create AIResponse for OpenAI: {e}")
+
+        return {
+            'service': 'OpenAI',
+            'success': openai_response['success'],
+            'content': openai_response['content'],
+            'synopsis': synopsis,
+            'input_tokens': input_tokens,
+            'output_tokens': output_tokens,
+            'tokens_used': total_tokens,
+            'error': openai_response.get('error')
+        }
+
+    except Exception as e:
+        return {
+            'service': 'OpenAI',
+            'success': False,
+            'content': None,
+            'synopsis': 'Synopsis generation failed',
+            'error': str(e)
+        }
+
+
+async def process_gemini(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query):
+    """Process Gemini request with main response and synopsis generation."""
+    try:
+        gemini_service = AIServiceFactory.create_service(
+            'gemini',
+            settings.GEMINI_API_KEY,
+            model='gemini-2.0-flash-exp'
+        )
+
+        # Prepare context
+        context = {}
+        enhanced_message = message
+
+        if chat_history:
+            enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
+
+        if web_search_context and use_web_search and search_result and search_result.get('success', False):
+            context['web_search'] = {
+                'enabled': True,
+                'results': search_result['results']
+            }
+            if chat_history:
+                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+            else:
+                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+
+        # Get main response
+        gemini_response = await gemini_service.generate_response(enhanced_message, context)
+
+        # Generate synopsis
+        synopsis = "No synopsis available"
+        synopsis_result = None
+        if gemini_response['success'] and gemini_response['content']:
+            synopsis_result = await generate_synopsis_with_same_ai(
+                gemini_response['content'],
+                'gemini',
+                settings.GEMINI_API_KEY,
+                'gemini-2.0-flash-exp'
+            )
+            synopsis = synopsis_result.get('synopsis', 'No synopsis available')
+
+        # Extract tokens
+        input_tokens, output_tokens = extract_tokens(
+            gemini_response.get('metadata', {}),
+            'gemini'
+        )
+        total_tokens = calculate_total_tokens(input_tokens, output_tokens)
+
+        # Create AIResponse records
+        if ai_query:
+            try:
+                gemini_service_obj = await sync_to_async(AIService.objects.get)(name='gemini')
+
+                # Main response record
+                await sync_to_async(AIResponse.objects.create)(
+                    query=ai_query,
+                    service=gemini_service_obj,
+                    content=gemini_response['content'],
+                    raw_response=gemini_response.get('metadata', {}),
+                    summary=synopsis,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    tokens_used=total_tokens
+                )
+
+                # Synopsis generation record
+                if synopsis_result and synopsis_result.get('success'):
+                    synopsis_input_tokens, synopsis_output_tokens = extract_tokens(
+                        synopsis_result.get('metadata', {}),
+                        'gemini'
+                    )
+                    synopsis_total_tokens = calculate_total_tokens(synopsis_input_tokens, synopsis_output_tokens)
+                    await sync_to_async(AIResponse.objects.create)(
+                        query=ai_query,
+                        service=gemini_service_obj,
+                        content=synopsis,
+                        raw_response=synopsis_result.get('metadata', {}),
+                        summary='Synopsis generation call',
+                        input_tokens=synopsis_input_tokens,
+                        output_tokens=synopsis_output_tokens,
+                        tokens_used=synopsis_total_tokens
+                    )
+            except Exception as e:
+                print(f"Failed to create AIResponse for Gemini: {e}")
+
+        return {
+            'service': 'Gemini',
+            'success': gemini_response['success'],
+            'content': gemini_response['content'],
+            'synopsis': synopsis,
+            'input_tokens': input_tokens,
+            'output_tokens': output_tokens,
+            'tokens_used': total_tokens,
+            'error': gemini_response.get('error')
+        }
+
+    except Exception as e:
+        return {
+            'service': 'Gemini',
+            'success': False,
+            'content': None,
+            'synopsis': 'Synopsis generation failed',
+            'error': str(e)
+        }
+
+
+async def process_all_services_async(message: str, services: list, use_web_search: bool, chat_history: str, conversation_id: str):
+    """
+    Async helper that coordinates parallel LLM calls.
+    """
+    # Create AIQuery for cost tracking if a conversation is provided
+    ai_query = None
+    if conversation_id:
+        try:
+            conversation = await sync_to_async(Conversation.objects.select_related('user').get)(
+                id=conversation_id
+            )
+            ai_query = await sync_to_async(AIQuery.objects.create)(
+                user=conversation.user,
+                conversation=conversation,
+                prompt=message,
+                context={'chat_history': chat_history, 'use_web_search': use_web_search},
+                status='processing',
+                services_requested=services
+            )
+        except Exception as e:
+            print(f"Failed to create AIQuery: {e}")
+            import traceback
+            traceback.print_exc()
+            pass
+
+    # Perform web search once if needed
+    web_search_context = ""
+    search_result = {}
+
+    if use_web_search:
+        try:
+            web_search_coordinator = WebSearchCoordinator()
+            search_result = await web_search_coordinator.search_for_query(
+                user_query=message,
+                user=None,
+                context={}
+            )
+
+            if search_result.get('success', False) and search_result.get('results'):
+                search_summary = []
+                for idx, result in enumerate(search_result['results'][:5], 1):
+                    search_summary.append(
+                        f"{idx}. {result.get('title', 'No title')}\n"
+                        f"   URL: {result.get('url', 'No URL')}\n"
+                        f"   {result.get('content', 'No content')[:200]}...\n"
+                    )
+                web_search_context = '\n'.join(search_summary)
+        except Exception as e:
+            print(f"Web search failed: {str(e)}")
+
+    # Build list of coroutines for requested services
+    tasks = []
+
+    if 'claude' in services and settings.CLAUDE_API_KEY:
+        tasks.append(process_claude(message, chat_history, web_search_context, search_result, use_web_search, ai_query))
+
+    if 'openai' in services and settings.OPENAI_API_KEY:
+        tasks.append(process_openai(message, chat_history, web_search_context, search_result, use_web_search, ai_query))
+
+    if 'gemini' in services and settings.GEMINI_API_KEY:
+        tasks.append(process_gemini(message, chat_history, web_search_context, search_result, use_web_search, ai_query))
+
+    # Run all service requests concurrently
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Handle any exceptions that occurred
+    processed_results = []
+    for result in results:
+        if isinstance(result, Exception):
+            print(f"Error in parallel execution: {result}")
+            processed_results.append({
+                'service': 'Unknown',
+                'success': False,
+                'content': None,
+                'synopsis': 'Error occurred',
+                'error': str(result)
+            })
+        else:
+            processed_results.append(result)
+
+    # Update AIQuery status
+    if ai_query:
+        try:
+            ai_query.status = 'completed'
+            ai_query.completed_at = timezone.now()
+            ai_query.total_responses = len(processed_results)
+            await sync_to_async(ai_query.save)()
+        except Exception as e:
+            print(f"Failed to update AIQuery: {e}")
+
+    return processed_results
+
+
+@csrf_exempt
 @require_http_methods(["POST"])
 def test_ai_services(request):
     """
-    Simple test endpoint to verify real AI API integration
+    Parallelized test endpoint for AI service integration.
     POST /api/v1/test-ai/
     Body: {"message": "test question", "services": ["claude", "openai"], "use_web_search": true}
     """
@@ -62,282 +472,30 @@ def test_ai_services(request):
         services = data.get('services', ['claude', 'openai', 'gemini'])
         use_web_search = data.get('use_web_search', False)
         chat_history = data.get('chat_history', '')
-        
-        # Handle web search if enabled
-        web_search_context = None
-        web_search_sources = []
-        search_result = None
+        conversation_id = data.get('conversation_id')
 
-        if use_web_search:
-            try:
-                search_coordinator = WebSearchCoordinator()
-                
-                # Run web search async
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    search_result = loop.run_until_complete(
-                        search_coordinator.search_for_query(
-                            user_query=message,
-                            user=None,  # No user for test endpoint
-                            context={}
-                        )
-                    )
-                    
-                    if search_result['success']:
-                        web_search_sources = search_result.get('sources', [])
-                        # Format search results for AI context
-                        search_summary = []
-                        search_summary.append(f"Web Search Results for: {message}")
-                        search_summary.append(f"Found {len(search_result['results'])} relevant sources")
-                        search_summary.append("\n--- Search Results ---")
-                        
-                        for i, result in enumerate(search_result['results'][:6], 1):
-                            search_summary.append(f"\n{i}. {result.get('title', 'No title')}")
-                            search_summary.append(f"   Source: {result.get('source', 'Unknown source')}")
-                            if result.get('published_date'):
-                                search_summary.append(f"   Published: {result['published_date']}")
-                            search_summary.append(f"   Content: {result.get('snippet', 'No content preview')}")
-                        
-                        search_summary.append("\n--- End Search Results ---")
-                        search_summary.append("\nPlease use this current web information to enhance your response.")
-                        
-                        web_search_context = '\n'.join(search_summary)
-                        
-                finally:
-                    loop.close()
-                    
-            except Exception as e:
-                print(f"Web search failed: {str(e)}")
-                # Continue without web search if it fails
-        
-        results = []
-        
-        # Test Claude if requested and API key available
-        if 'claude' in services and settings.CLAUDE_API_KEY:
-            try:
-                claude_service = AIServiceFactory.create_service(
-                    'claude',
-                    settings.CLAUDE_API_KEY,
-                    model='claude-sonnet-4-20250514'
-                )
+        # Run async processing
+        results = asyncio.run(
+            process_all_services_async(
+                message=message,
+                services=services,
+                use_web_search=use_web_search,
+                chat_history=chat_history,
+                conversation_id=conversation_id
+            )
+        )
 
-                # Prepare context with web search and chat history if available
-                context = {}
-                enhanced_message = message
-
-                # Add chat history if available
-                if chat_history:
-                    enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
-
-                # Add web search context for Claude's citation system
-                if web_search_context and use_web_search and search_result and search_result.get('success', False):
-                    context['web_search'] = {
-                        'enabled': True,
-                        'results': search_result['results']
-                    }
-                    # For fallback compatibility, still add text-based context
-                    if chat_history:
-                        enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
-                    else:
-                        enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
-                
-                # Run async function
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    claude_response = loop.run_until_complete(
-                        claude_service.generate_response(enhanced_message, context)
-                    )
-                    
-                    # Generate synopsis using Claude itself
-                    synopsis = "No synopsis available"
-                    if claude_response['success'] and claude_response['content']:
-                        synopsis = loop.run_until_complete(
-                            generate_synopsis_with_same_ai(
-                                claude_response['content'],
-                                'claude',
-                                settings.CLAUDE_API_KEY,
-                                'claude-sonnet-4-20250514'
-                            )
-                        )
-                    
-                    results.append({
-                        'service': 'Claude',
-                        'success': claude_response['success'],
-                        'content': claude_response['content'],  # Return full content
-                        'synopsis': synopsis,
-                        'error': claude_response.get('error')
-                    })
-                finally:
-                    loop.close()
-                    
-            except Exception as e:
-                results.append({
-                    'service': 'Claude',
-                    'success': False,
-                    'content': None,
-                    'synopsis': 'Synopsis generation failed',
-                    'error': str(e)
-                })
-        
-        # Test OpenAI if requested and API key available  
-        if 'openai' in services and settings.OPENAI_API_KEY:
-            try:
-                openai_service = AIServiceFactory.create_service(
-                    'openai',
-                    settings.OPENAI_API_KEY,
-                    model='gpt-4o'
-                )
-
-                # Prepare context with web search and chat history if available
-                context = {}
-                enhanced_message = message
-
-                # Add chat history if available
-                if chat_history:
-                    enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
-
-                # Add web search context
-                if web_search_context and use_web_search and search_result and search_result.get('success', False):
-                    context['web_search'] = {
-                        'enabled': True,
-                        'results': search_result['results']
-                    }
-                    # For fallback compatibility, still add text-based context
-                    if chat_history:
-                        enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
-                    else:
-                        enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
-                
-                # Run async function
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    openai_response = loop.run_until_complete(
-                        openai_service.generate_response(enhanced_message, context)
-                    )
-                    
-                    # Generate synopsis using OpenAI itself
-                    synopsis = "No synopsis available"
-                    if openai_response['success'] and openai_response['content']:
-                        synopsis = loop.run_until_complete(
-                            generate_synopsis_with_same_ai(
-                                openai_response['content'],
-                                'openai',
-                                settings.OPENAI_API_KEY,
-                                'gpt-4o'
-                            )
-                        )
-                    
-                    results.append({
-                        'service': 'OpenAI', 
-                        'success': openai_response['success'],
-                        'content': openai_response['content'],  # Return full content
-                        'synopsis': synopsis,
-                        'error': openai_response.get('error')
-                    })
-                finally:
-                    loop.close()
-                    
-            except Exception as e:
-                results.append({
-                    'service': 'OpenAI',
-                    'success': False, 
-                    'content': None,
-                    'synopsis': 'Synopsis generation failed',
-                    'error': str(e)
-                })
-        
-        # Test Gemini if requested and API key available
-        if 'gemini' in services and settings.GEMINI_API_KEY:
-            try:
-                gemini_service = AIServiceFactory.create_service(
-                    'gemini',
-                    settings.GEMINI_API_KEY,
-                    model='gemini-2.0-flash-exp'
-                )
-
-                # Prepare context with web search and chat history if available
-                context = {}
-                enhanced_message = message
-
-                # Add chat history if available
-                if chat_history:
-                    enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
-
-                # Add web search context
-                if web_search_context and use_web_search and search_result and search_result.get('success', False):
-                    context['web_search'] = {
-                        'enabled': True,
-                        'results': search_result['results']
-                    }
-                    # For fallback compatibility, still add text-based context
-                    if chat_history:
-                        enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
-                    else:
-                        enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
-                
-                # Run async function
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    gemini_response = loop.run_until_complete(
-                        gemini_service.generate_response(enhanced_message, context)
-                    )
-                    
-                    # Generate synopsis using Gemini itself
-                    synopsis = "No synopsis available"
-                    if gemini_response['success'] and gemini_response['content']:
-                        synopsis = loop.run_until_complete(
-                            generate_synopsis_with_same_ai(
-                                gemini_response['content'],
-                                'gemini',
-                                settings.GEMINI_API_KEY,
-                                'gemini-2.0-flash-exp'
-                            )
-                        )
-                    
-                    results.append({
-                        'service': 'Gemini',
-                        'success': gemini_response['success'],
-                        'content': gemini_response['content'],  # Return full content
-                        'synopsis': synopsis,
-                        'error': gemini_response.get('error')
-                    })
-                finally:
-                    loop.close()
-                    
-            except Exception as e:
-                results.append({
-                    'service': 'Gemini',
-                    'success': False,
-                    'content': None,
-                    'synopsis': 'Synopsis generation failed',
-                    'error': str(e)
-                })
-        
         return JsonResponse({
             'success': True,
-            'message': message,
             'results': results,
-            'web_search_enabled': use_web_search,
-            'web_search_sources': web_search_sources,
-            'api_keys_configured': {
-                'claude': bool(settings.CLAUDE_API_KEY),
-                'openai': bool(settings.OPENAI_API_KEY),
-                'gemini': bool(settings.GEMINI_API_KEY),
-                'google_search': bool(getattr(settings, 'GOOGLE_CSE_API_KEY', None))
-            }
+            'timestamp': timezone.now().isoformat()
         })
-        
+
     except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e)
         }, status=500)
-
-
 @csrf_exempt
 @require_http_methods(["POST"])
 def combine_responses(request):
@@ -352,6 +510,7 @@ def combine_responses(request):
         llm2_name = data.get('llm2_name', '')
         llm2_response = data.get('llm2_response', '')
         chat_history = data.get('chat_history', '')
+        conversation_id = data.get('conversation_id')  # Optional for cost tracking
 
         if not all([user_query, llm1_name, llm1_response, llm2_name, llm2_response]):
             return JsonResponse({
@@ -446,6 +605,48 @@ Please provide your synthesis now:"""
                 loop.close()
 
             if synthesis_response['success']:
+                # Track cost if conversation_id provided
+                if conversation_id:
+                    try:
+                        from uuid import UUID
+                        conversation = Conversation.objects.get(id=UUID(conversation_id))
+                        ai_query = AIQuery.objects.create(
+                            user=conversation.user,
+                            conversation=conversation,
+                            prompt=f"Synthesis: {user_query[:100]}",
+                            status='completed',
+                            started_at=timezone.now(),
+                            completed_at=timezone.now()
+                        )
+
+                        # Get service object
+                        service_name = synthesis_provider.lower()
+                        service_obj = AIService.objects.get(name=service_name)
+
+                        # Extract tokens
+                        input_tokens, output_tokens = extract_tokens(
+                            synthesis_response.get('metadata', {}),
+                            service_name
+                        )
+                        total_tokens = calculate_total_tokens(input_tokens, output_tokens)
+
+                        # Create AIResponse record
+                        AIResponse.objects.create(
+                            query=ai_query,
+                            service=service_obj,
+                            content=synthesis_response['content'],
+                            raw_response=synthesis_response.get('metadata', {}),
+                            summary='Response synthesis',
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            tokens_used=total_tokens
+                        )
+
+                        # Ensure conversation aggregates reflect the new cost entry
+                        conversation.update_conversation_metadata()
+                    except Exception as e:
+                        print(f"Failed to track synthesis cost: {e}")
+
                 return JsonResponse({
                     'success': True,
                     'synthesis': synthesis_response['content'],
@@ -483,6 +684,11 @@ def critique_compare(request):
         llm2_name = data.get('llm2_name', '')
         llm2_response = data.get('llm2_response', '')
         chat_history = data.get('chat_history', '')
+        conversation_id = data.get('conversation_id')  # Optional for cost tracking
+
+        # DEBUG: Log received conversation_id
+        print(f"[CRITIQUE_COMPARE DEBUG] Received conversation_id: {conversation_id}")
+        print(f"[CRITIQUE_COMPARE DEBUG] Request data keys: {data.keys()}")
 
         if not all([user_query, llm1_name, llm1_response, llm2_name, llm2_response]):
             return JsonResponse({
@@ -582,6 +788,57 @@ Focus on helping improve future responses while maintaining objectivity in your 
                 loop.close()
 
             if critique_response['success']:
+                # Track cost if conversation_id provided
+                print(f"[CRITIQUE_COMPARE DEBUG] About to check conversation_id: {conversation_id}")
+                if conversation_id:
+                    print(f"[CRITIQUE_COMPARE DEBUG] conversation_id is truthy, attempting to track cost")
+                    try:
+                        from uuid import UUID
+                        conversation = Conversation.objects.get(id=UUID(conversation_id))
+                        print(f"[CRITIQUE_COMPARE DEBUG] Found conversation: {conversation.id}")
+                        ai_query = AIQuery.objects.create(
+                            user=conversation.user,
+                            conversation=conversation,
+                            prompt=f"Critique: {user_query[:100]}",
+                            status='completed',
+                            started_at=timezone.now(),
+                            completed_at=timezone.now()
+                        )
+                        print(f"[CRITIQUE_COMPARE DEBUG] Created AIQuery: {ai_query.id}")
+
+                        # Get service object
+                        service_name = 'openai' if 'openai' in critique_provider.lower() else 'claude'
+                        service_obj = AIService.objects.get(name=service_name)
+
+                        # Extract tokens
+                        input_tokens, output_tokens = extract_tokens(
+                            critique_response.get('metadata', {}),
+                            service_name
+                        )
+                        total_tokens = calculate_total_tokens(input_tokens, output_tokens)
+
+                        # Create AIResponse record
+                        AIResponse.objects.create(
+                            query=ai_query,
+                            service=service_obj,
+                            content=critique_response['content'],
+                            raw_response=critique_response.get('metadata', {}),
+                            summary='Response comparison critique',
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            tokens_used=total_tokens
+                        )
+                        print(f"[CRITIQUE_COMPARE DEBUG] Created AIResponse for service: {service_name}")
+
+                        # Refresh conversation aggregates so cost updates propagate to the UI
+                        conversation.update_conversation_metadata()
+                    except Exception as e:
+                        print(f"[CRITIQUE_COMPARE DEBUG] Failed to track critique cost: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"[CRITIQUE_COMPARE DEBUG] conversation_id is falsy, skipping cost tracking")
+
                 return JsonResponse({
                     'success': True,
                     'critique': critique_response['content'],
@@ -620,6 +877,7 @@ def cross_reflect(request):
         llm2_name = data.get('llm2_name', '')
         llm2_response = data.get('llm2_response', '')
         chat_history = data.get('chat_history', '')
+        conversation_id = data.get('conversation_id')  # Optional for cost tracking
 
         if not all([user_query, llm1_name, llm1_response, llm2_name, llm2_response]):
             return JsonResponse({
@@ -754,19 +1012,109 @@ Provide a balanced, constructive reflection that demonstrates intellectual hones
 
         # Check if both reflections succeeded
         if llm1_reflection_response.get('success') and llm2_reflection_response.get('success'):
+            # Track cost if conversation_id provided
+            if conversation_id:
+                try:
+                    from uuid import UUID
+                    conversation = Conversation.objects.get(id=UUID(conversation_id))
+                    ai_query = AIQuery.objects.create(
+                        user=conversation.user,
+                        conversation=conversation,
+                        prompt=f"Cross-reflection: {user_query[:100]}",
+                        status='completed',
+                        started_at=timezone.now(),
+                        completed_at=timezone.now()
+                    )
+
+                    # Track LLM1's reflection
+                    llm1_service_obj = AIService.objects.get(name=llm1_key)
+                    llm1_input_tokens, llm1_output_tokens = extract_tokens(
+                        llm1_reflection_response.get('metadata', {}),
+                        llm1_key
+                    )
+                    llm1_total_tokens = calculate_total_tokens(llm1_input_tokens, llm1_output_tokens)
+
+                    AIResponse.objects.create(
+                        query=ai_query,
+                        service=llm1_service_obj,
+                        content=llm1_reflection_response.get('content', ''),
+                        raw_response=llm1_reflection_response.get('metadata', {}),
+                        summary=f'{llm1_name} reflecting on {llm2_name}',
+                        input_tokens=llm1_input_tokens,
+                        output_tokens=llm1_output_tokens,
+                        tokens_used=llm1_total_tokens
+                    )
+
+                    # Track LLM2's reflection
+                    llm2_service_obj = AIService.objects.get(name=llm2_key)
+                    llm2_input_tokens, llm2_output_tokens = extract_tokens(
+                        llm2_reflection_response.get('metadata', {}),
+                        llm2_key
+                    )
+                    llm2_total_tokens = calculate_total_tokens(llm2_input_tokens, llm2_output_tokens)
+
+                    AIResponse.objects.create(
+                        query=ai_query,
+                        service=llm2_service_obj,
+                        content=llm2_reflection_response.get('content', ''),
+                        raw_response=llm2_reflection_response.get('metadata', {}),
+                        summary=f'{llm2_name} reflecting on {llm1_name}',
+                        input_tokens=llm2_input_tokens,
+                        output_tokens=llm2_output_tokens,
+                        tokens_used=llm2_total_tokens
+                    )
+
+                    # Track synopsis costs if they were generated
+                    if isinstance(llm1_synopsis, dict) and llm1_synopsis.get('success'):
+                        llm1_syn_input, llm1_syn_output = extract_tokens(
+                            llm1_synopsis.get('metadata', {}),
+                            llm1_key
+                        )
+                        AIResponse.objects.create(
+                            query=ai_query,
+                            service=llm1_service_obj,
+                            content=llm1_synopsis.get('synopsis', ''),
+                            raw_response=llm1_synopsis.get('metadata', {}),
+                            summary='Synopsis generation for cross-reflection',
+                            input_tokens=llm1_syn_input,
+                            output_tokens=llm1_syn_output,
+                            tokens_used=calculate_total_tokens(llm1_syn_input, llm1_syn_output)
+                        )
+
+                    if isinstance(llm2_synopsis, dict) and llm2_synopsis.get('success'):
+                        llm2_syn_input, llm2_syn_output = extract_tokens(
+                            llm2_synopsis.get('metadata', {}),
+                            llm2_key
+                        )
+                        AIResponse.objects.create(
+                            query=ai_query,
+                            service=llm2_service_obj,
+                            content=llm2_synopsis.get('synopsis', ''),
+                            raw_response=llm2_synopsis.get('metadata', {}),
+                            summary='Synopsis generation for cross-reflection',
+                            input_tokens=llm2_syn_input,
+                            output_tokens=llm2_syn_output,
+                            tokens_used=calculate_total_tokens(llm2_syn_input, llm2_syn_output)
+                        )
+
+                    # Refresh conversation metadata so aggregated costs include these reflections
+                    conversation.update_conversation_metadata()
+                except Exception as e:
+                    print(f"Failed to track cross-reflection cost: {e}")
+
             return JsonResponse({
                 'success': True,
                 'reflections': [
                     {
                         'service': llm1_name,
                         'content': llm1_reflection_response.get('content', ''),
-                        'synopsis': llm1_synopsis,
+                        'synopsis': llm1_synopsis.get('synopsis', 'No synopsis available') if isinstance(llm1_synopsis, dict) else llm1_synopsis,
                         'reflecting_on': llm2_name
                     },
                     {
                         'service': llm2_name,
                         'content': llm2_reflection_response.get('content', ''),
-                        'synopsis': llm2_synopsis,
+                        'synopsis': llm2_synopsis.get('synopsis', 'No synopsis available') if isinstance(llm2_synopsis, dict) else llm2_synopsis,
                         'reflecting_on': llm1_name
                     }
                 ]

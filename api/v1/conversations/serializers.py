@@ -74,13 +74,17 @@ class ConversationListSerializer(serializers.ModelSerializer):
         return list(services)
 
     def get_total_cost(self, obj):
-        """Calculate total cost of this conversation."""
-        total = AIResponse.objects.filter(
-            query__conversation=obj
-        ).aggregate(
-            total=models.Sum('cost')
-        )['total'] or 0
-        return float(total)
+        """Calculate total cost of this conversation from database view."""
+        from django.db import connection
+
+        # Format UUID based on database backend: SQLite uses 32-char strings without hyphens, PostgreSQL uses canonical format
+        conversation_id = str(obj.id).replace('-', '') if connection.vendor == 'sqlite' else str(obj.id)
+
+        sql = "SELECT total_cost FROM conversation_cost_view WHERE conversation_id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [conversation_id])
+            row = cursor.fetchone()
+            return float(row[0]) if row else 0.0
 
 
 class ConversationDetailSerializer(serializers.ModelSerializer):
@@ -129,13 +133,17 @@ class ConversationDetailSerializer(serializers.ModelSerializer):
         return list(services)
 
     def get_total_cost(self, obj):
-        """Calculate total cost of this conversation."""
-        total = AIResponse.objects.filter(
-            query__conversation=obj
-        ).aggregate(
-            total=Sum('cost')
-        )['total'] or 0
-        return float(total)
+        """Calculate total cost of this conversation from database view."""
+        from django.db import connection
+
+        # Format UUID based on database backend: SQLite uses 32-char strings without hyphens, PostgreSQL uses canonical format
+        conversation_id = str(obj.id).replace('-', '') if connection.vendor == 'sqlite' else str(obj.id)
+
+        sql = "SELECT total_cost FROM conversation_cost_view WHERE conversation_id = %s"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [conversation_id])
+            row = cursor.fetchone()
+            return float(row[0]) if row else 0.0
 
 
 class ConversationCreateSerializer(serializers.ModelSerializer):
@@ -147,12 +155,20 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Create conversation with user from request context if authenticated."""
+        from django.contrib.auth import get_user_model
+
         request = self.context.get('request')
         if request and request.user and request.user.is_authenticated:
             validated_data['user'] = request.user
         else:
-            # Allow conversations without a user for demo purposes
-            validated_data['user'] = None
+            # Use default demo user for unauthenticated conversations (enables cost tracking)
+            User = get_user_model()
+            try:
+                demo_user = User.objects.get(username='testuser')
+                validated_data['user'] = demo_user
+            except User.DoesNotExist:
+                # Keep anonymous conversations unowned for privacy
+                validated_data['user'] = None
         return super().create(validated_data)
 
 

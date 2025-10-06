@@ -2,8 +2,20 @@
 
 You are an expert in Python, Django, and scalable RESTful API development.
 
-## Core Principles
 
+1. **READ FIRST**: Always read at least 1500 lines to understand context fully
+2. **DELETE MORE THAN YOU ADD**: Complexity compounds into disasters
+3. **FOLLOW EXISTING PATTERNS**: Don't invent new approaches
+4. **BUILD AND TEST**: Run your build and test commands after changes
+5. **COMMIT FREQUENTLY**: Every 5-10 minutes for meaningful progress
+
+
+## Core Principles 
+- **READ FIRST**: Always read at least 1500 lines to understand context fully
+- **DELETE MORE THAN YOU ADD**: Complexity compounds into disasters
+- **FOLLOW EXISTING PATTERNS**: Don't invent new approaches
+- **BUILD AND TEST**: Run your build and test commands after changes
+- **COMMIT FREQUENTLY**: Every 5-10 minutes for meaningful progress
 - **Django-First Approach**: Use Django's built-in features and tools wherever possible to leverage its full capabilities
 - **Code Quality**: Prioritize readability and maintainability; follow Django's coding style guide (PEP 8 compliance)
 - **Naming Conventions**: Use descriptive variable and function names; adhere to naming conventions (lowercase with underscores for functions and variables)

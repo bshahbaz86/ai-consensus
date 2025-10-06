@@ -1,8 +1,7 @@
-"""
-Conversation and message models for ChatAI.
-"""
-from django.db import models
+"""Conversation and message models for ChatAI."""
+from decimal import Decimal
 from django.conf import settings
+from django.db import connection, models
 import uuid
 
 
@@ -84,7 +83,6 @@ class Conversation(models.Model):
     def update_conversation_metadata(self):
         """Update conversation metadata from messages and AI responses."""
         from django.db.models import Sum
-        from apps.responses.models import AIResponse
 
         # Update message count and last message info
         messages = self.messages.all()
@@ -106,13 +104,21 @@ class Conversation(models.Model):
             total=Sum('tokens_used')
         )['total'] or 0
 
-        # Update total cost from AI responses
-        total_cost = AIResponse.objects.filter(
-            query__conversation=self
-        ).aggregate(
-            total=Sum('cost')
-        )['total'] or 0
-        self.total_cost = total_cost
+        # Update total cost using SQL view for accurate pricing aggregation
+        conversation_id = (
+            str(self.id).replace('-', '')
+            if connection.vendor == 'sqlite'
+            else str(self.id)
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT total_cost FROM conversation_cost_view WHERE conversation_id = %s",
+                [conversation_id]
+            )
+            row = cursor.fetchone()
+
+        self.total_cost = Decimal(str(row[0])) if row and row[0] is not None else Decimal('0')
 
         self.save(update_fields=[
             'total_messages', 'last_message_at', 'last_user_message_excerpt',

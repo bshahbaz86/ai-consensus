@@ -39,10 +39,9 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'apps.accounts',
-    'apps.conversations', 
+    'apps.conversations',
     'apps.ai_services',
     'apps.responses',
-    'apps.notifications',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

@@ -52,7 +52,13 @@ class AIQuery(models.Model):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='ai_queries')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='ai_queries',
+        null=True,
+        blank=True
+    )
     conversation = models.ForeignKey('conversations.Conversation', on_delete=models.CASCADE, related_name='ai_queries')
     
     # Query details
