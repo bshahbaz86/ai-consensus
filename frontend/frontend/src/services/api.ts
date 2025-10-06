@@ -91,6 +91,7 @@ class ApiService {
     const response = await fetch(url, {
       ...options,
       headers,
+      credentials: 'include', // Include cookies for session authentication
     });
 
     if (!response.ok) {

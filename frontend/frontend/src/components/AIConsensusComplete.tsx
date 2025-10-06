@@ -289,6 +289,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch(`http://localhost:8000/api/v1/conversations/${currentConversationId}/messages/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           role,
           content,
@@ -478,6 +479,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/test-ai/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(requestBody)
       });
 
@@ -577,6 +579,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/critique/compare/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(requestBody)
       });
 
@@ -614,6 +617,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
           llm1_name: response1.service,
@@ -659,6 +663,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           user_query: conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0]?.content || question,
           llm1_name: response1.service,
@@ -722,6 +727,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/critique/compare/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           user_query: exchange.question,
           llm1_name: response1.service,
@@ -771,6 +777,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           user_query: exchange.question,
           llm1_name: response1.service,
@@ -820,6 +827,7 @@ const AIConsensusComplete: React.FC = () => {
       const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           user_query: exchange.question,
           llm1_name: response1.service,
