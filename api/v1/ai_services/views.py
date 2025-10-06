@@ -6,9 +6,7 @@ from typing import Dict, Any, List
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
+from rest_framework.permissions import IsAuthenticated
 
 from core.ai_models import StructuredSummaryResult
 from apps.responses.services.structured_summary import StructuredSummaryService
@@ -35,10 +33,9 @@ class ConfigureKeysView(APIView):
                        status=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class StructuredSummaryView(APIView):
     """Generate structured summaries using Pydantic models and function calling."""
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     
     def post(self, request):
         try:

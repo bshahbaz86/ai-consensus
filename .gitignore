@@ -295,6 +295,8 @@ test_*.tmp
 /playwright/.cache/
 playwright.config.ts
 tests/
+!apps/**/tests/
+!apps/**/tests/**
 tests-examples/
 .playwright-mcp/
 

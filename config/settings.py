@@ -216,6 +216,23 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF Configuration for cross-origin requests
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Cookie settings for cross-origin usage
+# SameSite='None' is required for cross-origin requests (localhost:3000 → localhost:8000)
+# In production with HTTPS, set SECURE cookies to True
+SESSION_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_SECURE = not DEBUG  # True in production with HTTPS, False in development
+SESSION_COOKIE_HTTPONLY = True
+
+CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SECURE = not DEBUG  # True in production with HTTPS, False in development
+CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
+
 # API Key Encryption
 ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='dev-key-32-chars-for-encryption!')
 
@@ -224,11 +241,22 @@ CLAUDE_API_KEY = config('CLAUDE_API_KEY', default='')
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 
-# Google Custom Search API Configuration
+# Test/Diagnostic Endpoints Configuration
+# SECURITY: These endpoints should only be enabled in development
+# Set to False in production to prevent unauthorized AI API usage
+ENABLE_TEST_AI_ENDPOINTS = config('ENABLE_TEST_AI_ENDPOINTS', default=DEBUG, cast=bool)
+
+# Reka API Configuration
+REKA_API_KEY = config('REKA_API_KEY', default='')
+
+# Google Custom Search API Configuration (deprecated - using Reka now)
 GOOGLE_CSE_API_KEY = config('GOOGLE_CSE_API_KEY', default='')
 GOOGLE_CSE_CX = config('GOOGLE_CSE_CX', default='')
 
 # Logging Configuration
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -249,7 +277,7 @@ LOGGING = {
         },
         'file': {
             'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'django.log',
+            'filename': LOG_DIR / 'django.log',
             'formatter': 'verbose',
         },
     },
