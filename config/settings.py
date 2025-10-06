@@ -216,6 +216,22 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF Configuration for cross-origin requests
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Session cookie settings for cross-origin usage
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_HTTPONLY = True
+
+# CSRF cookie settings for cross-origin usage
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
+CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
+
 # API Key Encryption
 ENCRYPTION_KEY = config('ENCRYPTION_KEY', default='dev-key-32-chars-for-encryption!')
 

@@ -508,7 +508,7 @@ def test_ai_services(request):
         return disabled_response
 
     try:
-        data = json.loads(request.body)
+        data = request.data
         message = data.get('message', 'Hello, how are you?')
         services = data.get('services', ['claude', 'openai', 'gemini'])
         use_web_search = data.get('use_web_search', False)
@@ -554,7 +554,7 @@ def combine_responses(request):
         return disabled_response
 
     try:
-        data = json.loads(request.body)
+        data = request.data
         user_query = data.get('user_query', '')
         llm1_name = data.get('llm1_name', '')
         llm1_response = data.get('llm1_response', '')
@@ -736,7 +736,7 @@ def critique_compare(request):
         return disabled_response
 
     try:
-        data = json.loads(request.body)
+        data = request.data
         user_query = data.get('user_query', '')
         llm1_name = data.get('llm1_name', '')
         llm1_response = data.get('llm1_response', '')
@@ -937,7 +937,7 @@ def cross_reflect(request):
         return disabled_response
 
     try:
-        data = json.loads(request.body)
+        data = request.data
         user_query = data.get('user_query', '')
         llm1_name = data.get('llm1_name', '')
         llm1_response = data.get('llm1_response', '')
