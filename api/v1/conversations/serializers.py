@@ -77,10 +77,12 @@ class ConversationListSerializer(serializers.ModelSerializer):
         """Calculate total cost of this conversation from database view."""
         from django.db import connection
 
-        # Use parameterized query - convert UUID to string without hyphens (SQLite stores UUIDs as 32-char strings)
+        # Format UUID based on database backend: SQLite uses 32-char strings without hyphens, PostgreSQL uses canonical format
+        conversation_id = str(obj.id).replace('-', '') if connection.vendor == 'sqlite' else str(obj.id)
+
         sql = "SELECT total_cost FROM conversation_cost_view WHERE conversation_id = %s"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [str(obj.id).replace('-', '')])
+            cursor.execute(sql, [conversation_id])
             row = cursor.fetchone()
             return float(row[0]) if row else 0.0
 
@@ -134,10 +136,12 @@ class ConversationDetailSerializer(serializers.ModelSerializer):
         """Calculate total cost of this conversation from database view."""
         from django.db import connection
 
-        # Use parameterized query - convert UUID to string without hyphens (SQLite stores UUIDs as 32-char strings)
+        # Format UUID based on database backend: SQLite uses 32-char strings without hyphens, PostgreSQL uses canonical format
+        conversation_id = str(obj.id).replace('-', '') if connection.vendor == 'sqlite' else str(obj.id)
+
         sql = "SELECT total_cost FROM conversation_cost_view WHERE conversation_id = %s"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [str(obj.id).replace('-', '')])
+            cursor.execute(sql, [conversation_id])
             row = cursor.fetchone()
             return float(row[0]) if row else 0.0
 
@@ -163,9 +167,8 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
                 demo_user = User.objects.get(username='testuser')
                 validated_data['user'] = demo_user
             except User.DoesNotExist:
-                # Fallback: create or get first available user
-                demo_user = User.objects.first()
-                validated_data['user'] = demo_user if demo_user else None
+                # Keep anonymous conversations unowned for privacy
+                validated_data['user'] = None
         return super().create(validated_data)
 
 
