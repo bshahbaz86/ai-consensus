@@ -280,13 +280,19 @@ graph TB
    python3 manage.py migrate
    ```
 
-6. **Create a superuser account (required for accessing the application)**
+6. **Load AI service data (required for cost tracking)**
+   ```bash
+   python3 manage.py loaddata apps/ai_services/fixtures/initial_services.json
+   ```
+   This creates the AI service records (Claude, OpenAI, Gemini) with pricing information.
+
+7. **Create a superuser account (required for accessing the application)**
    ```bash
    python3 manage.py createsuperuser
    ```
    Follow the prompts to create your admin account.
 
-7. **Start backend server**
+8. **Start backend server**
    ```bash
    python3 manage.py runserver 8000
    ```
