@@ -1,5 +1,6 @@
-import React from 'react';
-import { Search, Plus, Building2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Settings, Building2 } from 'lucide-react';
+import ModelSelectionModal from './ModelSelectionModal';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -7,18 +8,24 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
+  const [isModelModalOpen, setIsModelModalOpen] = useState(false);
+
   const chatItems = [
     'New Chat'
   ];
 
   return (
-    <div className={`${isOpen ? 'w-64' : 'w-0'} bg-gray-900 text-gray-100 flex flex-col transition-all duration-300 overflow-hidden border-r border-gray-700`}>
-      {/* Header */}
-      <div className="p-4 border-b border-gray-700">
-        <button className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-sm font-medium transition-colors">
-          <Plus size={16} />
-          New Chat
-        </button>
+    <>
+      <div className={`${isOpen ? 'w-64' : 'w-0'} bg-gray-900 text-gray-100 flex flex-col transition-all duration-300 overflow-hidden border-r border-gray-700`}>
+        {/* Header */}
+        <div className="p-4 border-b border-gray-700">
+          <button
+            onClick={() => setIsModelModalOpen(true)}
+            className="w-full flex items-center gap-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-sm font-medium transition-colors"
+          >
+            <Settings size={16} />
+            Select AI Services
+          </button>
 
         {/* Menu Items */}
         <div className="mt-4 space-y-1">
@@ -54,6 +61,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
         </div>
       </div>
     </div>
+
+      {/* Model Selection Modal */}
+      <ModelSelectionModal
+        isOpen={isModelModalOpen}
+        onClose={() => setIsModelModalOpen(false)}
+      />
+    </>
   );
 };
 

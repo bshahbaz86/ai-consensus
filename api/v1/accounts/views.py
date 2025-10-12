@@ -1,16 +1,19 @@
 """
 API v1 accounts views.
 """
+import json
+from pathlib import Path
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import login, logout
 from django.contrib.sessions.models import Session
+from django.conf import settings
 from core.responses import success_response, error_response
 from apps.accounts.serializers import (
-    UserRegistrationSerializer, 
-    UserLoginSerializer, 
+    UserRegistrationSerializer,
+    UserLoginSerializer,
     UserProfileSerializer,
     APIKeySerializer
 )

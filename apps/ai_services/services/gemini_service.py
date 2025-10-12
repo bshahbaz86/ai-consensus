@@ -32,11 +32,11 @@ class GeminiService(BaseAIService):
     async def generate_response(self, prompt: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Generate a response using Google Gemini API
-        
+
         Args:
             prompt: The input prompt
             context: Optional context with max_tokens, temperature, etc.
-            
+
         Returns:
             Dict containing success status, content, and metadata
         """
@@ -44,7 +44,11 @@ class GeminiService(BaseAIService):
             prepared_context = self.prepare_context(context)
             max_tokens = prepared_context.get('max_tokens', self.max_tokens)
             temperature = prepared_context.get('temperature', 0)
-            url = f"{self.base_url}/{self.model}:generateContent"
+
+            # Handle model ID format - strip 'models/' prefix if present
+            # since base_url already includes '/models'
+            model_id = self.model.replace('models/', '') if self.model.startswith('models/') else self.model
+            url = f"{self.base_url}/{model_id}:generateContent"
             
             headers = {
                 'Content-Type': 'application/json'
@@ -136,11 +140,16 @@ class GeminiService(BaseAIService):
             }
             
         except Exception as e:
-            logger.error(f"Unexpected error in Gemini service: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"Unexpected error in Gemini service: {type(e).__name__}: {e}")
+            logger.error(f"Traceback: {error_details}")
+
+            error_message = str(e) if str(e) else f"{type(e).__name__} (no error message)"
             return {
                 'success': False,
                 'content': None,
-                'error': f'Unexpected error: {str(e)}',
+                'error': f'Unexpected error: {error_message}',
                 'metadata': {'service': 'gemini'}
             }
     
