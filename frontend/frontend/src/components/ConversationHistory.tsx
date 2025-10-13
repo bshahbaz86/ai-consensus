@@ -321,7 +321,7 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
       <div className="flex-1 overflow-y-auto p-2">
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" role="status" aria-label="Loading conversations"></div>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
