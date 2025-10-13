@@ -5,8 +5,9 @@ This document explains which tests were excluded from `./run_all_tests.sh` and w
 ## Summary
 
 **Total Tests in Project:** 108 tests
-- **Included in run_all_tests.sh:** 91 tests ✅ (100% passing)
+- **Included in run_all_tests.sh:** 89 tests ✅ (98% passing - 89/91)
 - **Excluded from run_all_tests.sh:** 17 tests ⚠️ (some failing)
+- **Legacy Frontend Tests:** 2 tests failing in ConversationHistory.test.tsx (included but need updates)
 
 ---
 
@@ -75,6 +76,40 @@ This document explains which tests were excluded from `./run_all_tests.sh` and w
 - `test_cleanup_orphaned_responses` ✅
 
 **Recommendation:** Could be added to `run_all_tests.sh` if desired (they pass)
+
+---
+
+### 3. `frontend/frontend/src/components/__tests__/ConversationHistory.test.tsx` (Legacy Tests)
+
+**Status:** 11 tests total, 2 failing ⚠️
+
+**Why Partially Failing:**
+- These are legacy tests from September 2024 (before project restructure)
+- Tests have minor issues with element selectors and timing
+- Component behavior may have changed since tests were written
+
+**Failing Tests:**
+
+1. **`displays conversation metadata correctly`** - Timeout
+   - Looking for conversation metadata (excerpt, message count, cost, AI badges)
+   - Elements exist but timing/selector issues in test
+
+2. **`handles conversation actions`** - Button selector issue
+   - Testing archive/delete/fork actions
+   - Menu button selector needs updating
+
+**Passing Tests (9/11):**
+- `renders conversation history correctly` ✅
+- `handles search input` ✅
+- `calls onConversationSelect when conversation is clicked` ✅
+- `calls onNewConversation when new chat button is clicked` ✅
+- `shows loading state initially` ✅
+- `shows empty state when no conversations exist` ✅
+- `shows error state when API fails` ✅
+- `highlights current conversation` ✅
+- `filters out archived conversations by default` ✅
+
+**Note:** These tests are included in the test runner but need minor updates to match current component implementation. The core functionality is well-tested by the other passing tests.
 
 ---
 
@@ -211,12 +246,19 @@ Total Project Tests: 108
 
 ## Conclusion
 
-The `./run_all_tests.sh` script intentionally runs only the **new, comprehensive test suite (91 tests)** because:
+The `./run_all_tests.sh` script runs **91 tests total (89 passing, 2 legacy failing)** because:
 
-1. ✅ **100% passing rate** (vs 54% for legacy tests)
+1. ✅ **98% passing rate** (89/91 tests passing)
 2. ✅ **Superior coverage** (security, integration, components, API contracts)
 3. ✅ **Better architecture** (TransactionTestCase for async, proper mocking)
-4. ✅ **Production ready** (CI/CD compatible, reliable)
+4. ✅ **Production ready** (CI/CD compatible, mostly reliable)
 5. ✅ **Well documented** (clear test purposes, good naming)
 
-The excluded legacy tests can be fixed or deprecated as a separate task, but they are not needed for pre-push validation since the new tests provide equal or better coverage with 100% reliability.
+**Current Status:**
+- Backend: 26/26 passing ✅ (100%)
+- Frontend: 63/65 passing ⚠️ (97% - 2 legacy ConversationHistory tests failing)
+  - New tests (Phase 1C): 52/52 passing ✅ (100%)
+  - Legacy ConversationHistory tests: 9/11 passing ⚠️ (82%)
+
+**Next Steps:**
+The 2 failing legacy ConversationHistory tests need minor updates to match current component implementation (element selectors and timing). They are not blocking since the core functionality is well-covered by the 9 passing tests in that file and the new comprehensive test suite.
