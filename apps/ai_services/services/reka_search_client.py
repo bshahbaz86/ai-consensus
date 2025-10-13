@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from django.conf import settings
@@ -187,17 +188,17 @@ class RekaSearchClient:
         results = []
 
         # Extract markdown-style citations: ([text](url)) or [text](url)
-        import re
         from urllib.parse import urlparse
 
         # Pattern matches: ([text](url)) or [text](url)
         citation_pattern = r'\[([^\]]+)\]\((https?://[^\)]+)\)'
-        citations = re.findall(citation_pattern, content)
+        citations = list(re.finditer(citation_pattern, content))
 
         # Track unique URLs to avoid duplicates
         seen_urls = set()
 
-        for link_text, url in citations:
+        for match in citations:
+            link_text, url = match.groups()
             # Skip if we've already added this URL
             if url in seen_urls:
                 continue
@@ -208,18 +209,75 @@ class RekaSearchClient:
             parsed = urlparse(url)
             domain = parsed.netloc or 'Unknown Source'
 
+            snippet = self._extract_snippet_from_content(content, match.start(), match.end())
+            cleaned_snippet = self._clean_markdown_text(snippet) if snippet else ''
+            if not cleaned_snippet:
+                # Fallback to link text or domain when no meaningful snippet is found
+                cleaned_snippet = link_text if link_text and not link_text.isdigit() else domain
+
+            content_summary = cleaned_snippet
+            if url:
+                content_summary = f"{cleaned_snippet} (Source: {url})".strip()
+
             results.append({
                 'title': link_text if not link_text.isdigit() else domain,
                 'url': url,
-                'snippet': '',
+                'snippet': cleaned_snippet,
                 'display_url': domain,
                 'published_date': None,
-                'content': '',
+                'content': content_summary,
                 'source': domain
             })
 
         logger.info(f"Extracted {len(results)} sources from Reka response")
         return results
+
+    def _extract_snippet_from_content(self, content: str, start_idx: int, end_idx: int) -> str:
+        """
+        Extract a relevant snippet surrounding a citation in the Reka response content.
+        Prefers the line/sentence containing the citation, with fallback to a windowed excerpt.
+        """
+        if not content:
+            return ''
+
+        # Try to capture the line containing the citation
+        line_start = content.rfind('\n', 0, start_idx)
+        line_end = content.find('\n', end_idx)
+
+        if line_start == -1:
+            line_start = 0
+        else:
+            line_start += 1  # move past newline
+
+        if line_end == -1:
+            line_end = len(content)
+
+        line_snippet = content[line_start:line_end].strip()
+        if line_snippet:
+            return line_snippet
+
+        # Fallback: take a window around the citation
+        window_before = 200
+        window_after = 200
+        window_start = max(0, start_idx - window_before)
+        window_end = min(len(content), end_idx + window_after)
+        return content[window_start:window_end].strip()
+
+    def _clean_markdown_text(self, text: str) -> str:
+        """
+        Convert markdown-formatted text to a cleaner plain-text snippet.
+        Removes bold/italic markers and converts [text](url) to text.
+        """
+        if not text:
+            return ''
+
+        # Replace markdown links with just the link text
+        cleaned = re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', r'\1', text)
+        # Remove emphasis markers
+        cleaned = cleaned.replace('**', '').replace('__', '')
+        # Collapse whitespace
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        return cleaned.strip()
 
     def _validate_and_format_location(self, user_location: Dict[str, str]) -> Optional[Dict[str, str]]:
         """
