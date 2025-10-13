@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Menu, Globe, Copy, Check, Star } from 'lucide-react';
+import { X, Menu, Globe, Copy, Check, Star } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
@@ -1115,13 +1115,6 @@ const AIConsensusComplete: React.FC = () => {
                 <X size={20} />
               </button>
             </div>
-            <button
-              onClick={handleNewConversation}
-              className="w-full flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-            >
-              <Plus size={16} />
-              New Chat
-            </button>
           </div>
           <div className="flex-1 overflow-hidden">
             <ConversationHistory
