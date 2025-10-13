@@ -487,6 +487,20 @@ The project includes comprehensive test suites for both backend (Django) and fro
 
 #### Running Tests
 
+**🚀 Quick Start - Run All Tests with One Command:**
+```bash
+# From project root - runs all 91 tests (26 backend + 72 frontend)
+./run_all_tests.sh
+```
+
+This comprehensive test runner:
+- ✅ Runs all backend tests (integration + security)
+- ✅ Runs all frontend tests (components + API contracts)
+- ✅ Color-coded output with clear pass/fail indicators
+- ✅ Proper error handling and exit codes
+- ✅ Automatically checks for virtual env and node_modules
+- ✅ Shows detailed summary at the end
+
 **Run All Backend Tests:**
 ```bash
 # From project root
