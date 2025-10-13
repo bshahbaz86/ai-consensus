@@ -61,7 +61,7 @@ class WebSearchCoordinator:
             }
 
         # Generate cache key for deduplication
-        cache_key = self._generate_cache_key(user_query)
+        cache_key = self._generate_cache_key(user_query, user_location)
 
         # Check if we already have this search cached
         cached_result = cache.get(cache_key)
@@ -199,13 +199,30 @@ class WebSearchCoordinator:
 
         return sources
     
-    def _generate_cache_key(self, query: str) -> str:
+    def _generate_cache_key(
+        self,
+        query: str,
+        user_location: Optional[Dict[str, str]] = None
+    ) -> str:
         """
         Generate a cache key for the search query.
         """
         # Include date to ensure daily cache invalidation for time-sensitive queries
         date_str = datetime.now().strftime('%Y-%m-%d')
-        query_hash = hashlib.md5(f"{query.lower().strip()}_{date_str}".encode()).hexdigest()
+        normalized_query = query.lower().strip()
+        location_payload = ''
+        if user_location:
+            # Normalize location keys/values so different orderings hash identically
+            sanitized_location = {
+                key.lower(): (value.strip().lower() if isinstance(value, str) else value)
+                for key, value in user_location.items()
+                if value
+            }
+            if sanitized_location:
+                location_payload = json.dumps(sanitized_location, sort_keys=True, separators=(',', ':'))
+
+        raw_cache_key = f"{normalized_query}|{location_payload}|{date_str}"
+        query_hash = hashlib.md5(raw_cache_key.encode()).hexdigest()
         return f"web_search:{query_hash}"
     
     def _check_rate_limit(self, user: User) -> bool:
