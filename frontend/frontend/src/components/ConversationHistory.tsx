@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Plus, MessageSquare, Clock, DollarSign,
-  Archive, MoreVertical, Trash2, Edit2, ExternalLink
+  Archive, MoreVertical, Trash2, Edit2, ExternalLink, Settings
 } from 'lucide-react';
 import { apiService, Conversation, SearchParams } from '../services/api';
+import ModelSelectionModal from './ModelSelectionModal';
 
 interface ConversationHistoryProps {
   currentConversationId?: string;
@@ -187,6 +188,7 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchParams, setSearchParams] = useState<SearchParams>({});
   const [error, setError] = useState<string | null>(null);
+  const [isModelModalOpen, setIsModelModalOpen] = useState(false);
 
   // Debounced search
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -285,14 +287,20 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
     <div className={`flex flex-col h-full bg-white border-r border-gray-200 ${className}`}>
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-900">Chat History</h2>
+        <div className="flex flex-col gap-2 mb-3">
           <button
             onClick={onNewConversation}
-            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            title="New Chat"
+            className="w-full flex items-center justify-center gap-2 bg-blue-500 text-white rounded-lg px-4 py-3 hover:bg-blue-600 transition-colors font-medium"
           >
             <Plus size={16} />
+            New Chat
+          </button>
+          <button
+            onClick={() => setIsModelModalOpen(true)}
+            className="w-full flex items-center justify-center gap-2 bg-white text-blue-600 border border-blue-100 rounded-lg px-4 py-3 hover:bg-blue-50 transition-colors font-medium"
+          >
+            <Settings size={16} />
+            Select AI Services
           </button>
         </div>
 
@@ -360,6 +368,12 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
           </div>
         )}
       </div>
+
+      {/* Model Selection Modal */}
+      <ModelSelectionModal
+        isOpen={isModelModalOpen}
+        onClose={() => setIsModelModalOpen(false)}
+      />
     </div>
   );
 };

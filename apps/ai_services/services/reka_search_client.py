@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from django.conf import settings
@@ -71,29 +72,33 @@ class RekaSearchClient:
 
         # Build web_search configuration
         web_search_config = {
-            'max_uses': 2,  # Limit to 2 searches per request as specified
+            'max_uses': 1,  # Limit to 1 searches per request as specified
         }
 
-        # Add user location if provided
+        # Add user location if provided and valid
         if user_location:
-            location_data = {}
-            if user_location.get('city'):
-                location_data['city'] = user_location['city']
-            if user_location.get('region'):
-                location_data['region'] = user_location['region']
-            if user_location.get('country'):
-                location_data['country'] = user_location['country']
+            # Validate location data before sending to Reka
+            location_data = self._validate_and_format_location(user_location)
 
             if location_data:
                 web_search_config['user_location'] = {
                     'approximate': location_data
                 }
+            else:
+                logger.warning("Invalid location data provided, proceeding without location filter")
 
         for attempt in range(retry_count + 1):
             try:
+                # If this is a retry and we have location, try without it
+                current_config = web_search_config.copy()
+                if attempt > 0 and 'user_location' in current_config:
+                    logger.info(f"Retry attempt {attempt + 1} without location filter")
+                    current_config.pop('user_location', None)
+
                 logger.info(f"Attempting Reka search (attempt {attempt + 1}): {query[:50]}...")
 
                 # Make request to Reka Research API with timeout
+                # Reka Research API typically takes 50-60 seconds for web search
                 response = await asyncio.wait_for(
                     self.client.chat.completions.create(
                         model=self.MODEL,
@@ -105,27 +110,27 @@ class RekaSearchClient:
                         ],
                         extra_body={
                             "research": {
-                                "web_search": web_search_config,
+                                "web_search": current_config,
                             }
                         },
-                        timeout=30.0,  # 30 second timeout
+                        timeout=90.0,  # 90 second timeout per attempt (Reka needs ~55s)
                     ),
-                    timeout=35.0  # Overall timeout slightly longer
+                    timeout=95.0  # Overall timeout slightly longer
                 )
 
-                logger.info(f"Reka search completed successfully")
+                logger.info(f"Reka search completed successfully on attempt {attempt + 1}")
                 # Process the response
                 return self._process_search_results(response, query)
 
             except asyncio.TimeoutError:
-                logger.error(f"Reka search timeout on attempt {attempt + 1}")
+                logger.warning(f"Reka search timeout on attempt {attempt + 1}")
                 if attempt < retry_count:
                     await asyncio.sleep(1)
                     continue
                 else:
                     return {
                         'success': False,
-                        'error': 'Reka search timed out',
+                        'error': 'Reka search timed out after all retries',
                         'results': []
                     }
             except Exception as e:
@@ -177,24 +182,151 @@ class RekaSearchClient:
 
     def _parse_content_for_sources(self, content: str) -> List[Dict[str, Any]]:
         """
-        Parse Reka response content to extract web sources.
-        Reka typically includes citations in markdown format or as references.
+        Parse Reka response content to extract web sources from citations.
+        Reka includes citations in inline markdown format like ([domain.com](url)).
         """
         results = []
 
-        # For now, create a single result with the research content
-        # In production, you'd parse actual citations from Reka's response
-        if content:
+        # Extract markdown-style citations: ([text](url)) or [text](url)
+        from urllib.parse import urlparse
+
+        # Pattern matches: ([text](url)) or [text](url)
+        citation_pattern = r'\[([^\]]+)\]\((https?://[^\)]+)\)'
+        citations = list(re.finditer(citation_pattern, content))
+
+        # Track unique URLs to avoid duplicates
+        seen_urls = set()
+
+        for match in citations:
+            link_text, url = match.groups()
+            # Skip if we've already added this URL
+            if url in seen_urls:
+                continue
+
+            seen_urls.add(url)
+
+            # Extract domain for display
+            parsed = urlparse(url)
+            domain = parsed.netloc or 'Unknown Source'
+
+            snippet = self._extract_snippet_from_content(content, match.start(), match.end())
+            cleaned_snippet = self._clean_markdown_text(snippet) if snippet else ''
+            if not cleaned_snippet:
+                # Fallback to link text or domain when no meaningful snippet is found
+                cleaned_snippet = link_text if link_text and not link_text.isdigit() else domain
+
+            content_summary = cleaned_snippet
+            if url:
+                content_summary = f"{cleaned_snippet} (Source: {url})".strip()
+
             results.append({
-                'title': 'Reka Research Result',
-                'url': '',  # Reka may not provide direct URLs
-                'snippet': content[:500] if len(content) > 500 else content,
-                'display_url': 'reka.ai',
+                'title': link_text if not link_text.isdigit() else domain,
+                'url': url,
+                'snippet': cleaned_snippet,
+                'display_url': domain,
                 'published_date': None,
-                'content': content
+                'content': content_summary,
+                'source': domain
             })
 
+        logger.info(f"Extracted {len(results)} sources from Reka response")
         return results
+
+    def _extract_snippet_from_content(self, content: str, start_idx: int, end_idx: int) -> str:
+        """
+        Extract a relevant snippet surrounding a citation in the Reka response content.
+        Prefers the line/sentence containing the citation, with fallback to a windowed excerpt.
+        """
+        if not content:
+            return ''
+
+        # Try to capture the line containing the citation
+        line_start = content.rfind('\n', 0, start_idx)
+        line_end = content.find('\n', end_idx)
+
+        if line_start == -1:
+            line_start = 0
+        else:
+            line_start += 1  # move past newline
+
+        if line_end == -1:
+            line_end = len(content)
+
+        line_snippet = content[line_start:line_end].strip()
+        if line_snippet:
+            return line_snippet
+
+        # Fallback: take a window around the citation
+        window_before = 200
+        window_after = 200
+        window_start = max(0, start_idx - window_before)
+        window_end = min(len(content), end_idx + window_after)
+        return content[window_start:window_end].strip()
+
+    def _clean_markdown_text(self, text: str) -> str:
+        """
+        Convert markdown-formatted text to a cleaner plain-text snippet.
+        Removes bold/italic markers and converts [text](url) to text.
+        """
+        if not text:
+            return ''
+
+        # Replace markdown links with just the link text
+        cleaned = re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', r'\1', text)
+        # Remove emphasis markers
+        cleaned = cleaned.replace('**', '').replace('__', '')
+        # Collapse whitespace
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        return cleaned.strip()
+
+    def _validate_and_format_location(self, user_location: Dict[str, str]) -> Optional[Dict[str, str]]:
+        """
+        Validate and format location data to ensure it meets Reka API requirements.
+        Country must be ISO 3166-1 two-letter code.
+        If validation fails, returns None to skip location filtering.
+        """
+        if not user_location:
+            return None
+
+        # Extract country code
+        country = user_location.get('country', '').strip().upper()
+
+        # Validate country code format (must be exactly 2 letters)
+        if country and len(country) != 2:
+            logger.warning(
+                f"Invalid country code '{country}' - must be ISO 3166-1 two-letter code. "
+                f"Skipping location filter."
+            )
+            return None
+
+        # Validate that country code contains only letters
+        if country and not country.isalpha():
+            logger.warning(
+                f"Invalid country code '{country}' - must contain only letters. "
+                f"Skipping location filter."
+            )
+            return None
+
+        # Build validated location data
+        location_data = {}
+
+        if country:
+            location_data['country'] = country
+
+        # Only add city and region if we have a valid country code
+        if country and user_location.get('city'):
+            location_data['city'] = user_location['city'].strip()
+
+        if country and user_location.get('region'):
+            location_data['region'] = user_location['region'].strip()
+
+        # Return None if we don't have at least a country code
+        if not location_data.get('country'):
+            logger.info("No valid country code provided, skipping location filter")
+            return None
+
+        logger.info(f"Using location filter: {location_data}")
+        return location_data
 
 
 class RekaSearchError(Exception):

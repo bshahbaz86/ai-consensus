@@ -4,6 +4,7 @@ API v1 accounts URL configuration.
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 from . import views
+from .model_preferences_view import ModelPreferencesView
 
 app_name = 'accounts'
 
@@ -16,7 +17,10 @@ urlpatterns = [
     path('logout/', views.LogoutView.as_view(), name='logout'),
     path('register/', views.RegisterView.as_view(), name='register'),
     path('profile/', views.ProfileView.as_view(), name='profile'),
-    
+
     # API key management
     path('api-keys/', views.APIKeyManagementView.as_view(), name='api_keys'),
+
+    # Model preferences
+    path('model-preferences/', ModelPreferencesView.as_view(), name='model_preferences'),
 ] + router.urls

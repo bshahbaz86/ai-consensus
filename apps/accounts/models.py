@@ -21,13 +21,30 @@ class User(AbstractUser):
     
     # User preferences
     preferred_ai_service = models.CharField(
-        max_length=50, 
+        max_length=50,
         default='claude',
         choices=[
             ('claude', 'Claude'),
             ('openai', 'OpenAI'),
             ('auto', 'Auto-select'),
         ]
+    )
+
+    # Model preferences per provider
+    openai_model = models.CharField(
+        max_length=100,
+        default='gpt-4o',
+        blank=True
+    )
+    claude_model = models.CharField(
+        max_length=100,
+        default='claude-sonnet-4-5-20250929',
+        blank=True
+    )
+    gemini_model = models.CharField(
+        max_length=100,
+        default='models/gemini-flash-latest',
+        blank=True
     )
     
     USERNAME_FIELD = 'email'

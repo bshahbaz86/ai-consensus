@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Plus, Menu, Globe, Copy, Check, Star } from 'lucide-react';
+import { X, Menu, Globe, Copy, Check, Star } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
@@ -37,6 +37,7 @@ const AIConsensusComplete: React.FC = () => {
   const [question, setQuestion] = useState('');
   const [responses, setResponses] = useState<AIResponse[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchingInternet, setSearchingInternet] = useState(false);
   const [selectedServices, setSelectedServices] = useState(['claude', 'gemini']);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [userLocation, setUserLocation] = useState<{city?: string; region?: string; country?: string; timezone?: string} | null>(null);
@@ -57,6 +58,7 @@ const AIConsensusComplete: React.FC = () => {
 
   // Ref to prevent duplicate conversation creation in StrictMode
   const conversationInitialized = useRef(false);
+  const isSendingRef = useRef(false);
 
   // Conversation tracking for chat history
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -341,50 +343,73 @@ const AIConsensusComplete: React.FC = () => {
     }
   };
 
-  // Function to get user's geolocation
+  // Function to get user's geolocation from browser
   const getUserLocation = async (): Promise<{city?: string; region?: string; country?: string; timezone?: string} | null> => {
-    // Get timezone from browser
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    try {
+      // Get timezone from browser
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    // Try to get approximate location from browser geolocation API
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) {
-        console.log('Geolocation not supported, using timezone only');
-        resolve({ timezone });
-        return;
+      // Try to infer country from browser locale/region settings
+      let country: string | undefined;
+
+      // Method 1: Try to get from navigator.language (e.g., "en-US" -> "US")
+      if (navigator.language) {
+        const parts = navigator.language.split('-');
+        if (parts.length === 2 && parts[1].length === 2) {
+          country = parts[1].toUpperCase();
+          console.log(`Inferred country code from browser language: ${country}`);
+        }
       }
 
-      // Set a shorter timeout for the promise itself
-      const timeoutId = setTimeout(() => {
-        console.log('Geolocation timeout, using timezone only');
-        resolve({ timezone });
-      }, 2000); // 2 second timeout
+      // Method 2: Try to infer from timezone if country not found
+      if (!country && timezone) {
+        // Map common timezones to country codes
+        const timezoneToCountry: {[key: string]: string} = {
+          'America/New_York': 'US',
+          'America/Los_Angeles': 'US',
+          'America/Chicago': 'US',
+          'America/Denver': 'US',
+          'America/Toronto': 'CA',
+          'America/Vancouver': 'CA',
+          'Europe/London': 'GB',
+          'Europe/Paris': 'FR',
+          'Europe/Berlin': 'DE',
+          'Europe/Rome': 'IT',
+          'Europe/Madrid': 'ES',
+          'Asia/Tokyo': 'JP',
+          'Asia/Shanghai': 'CN',
+          'Asia/Hong_Kong': 'HK',
+          'Asia/Singapore': 'SG',
+          'Australia/Sydney': 'AU',
+          'Australia/Melbourne': 'AU',
+        };
 
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          clearTimeout(timeoutId);
-          try {
-            // Use reverse geocoding API to get location info
-            // For now, we'll just use timezone and let Reka infer location
-            // You could add a reverse geocoding service here if needed
-            console.log('Geolocation obtained (using timezone only for now)');
-            resolve({ timezone });
-          } catch (error) {
-            console.error('Error getting location details:', error);
-            resolve({ timezone });
-          }
-        },
-        (error) => {
-          clearTimeout(timeoutId);
-          console.log('Geolocation permission denied or error, using timezone only:', error.message);
-          resolve({ timezone });
-        },
-        {
-          timeout: 1500,
-          maximumAge: 300000, // Cache for 5 minutes
+        country = timezoneToCountry[timezone];
+        if (country) {
+          console.log(`Inferred country code from timezone: ${country}`);
         }
-      );
-    });
+      }
+
+      // Validate country code format (must be exactly 2 uppercase letters)
+      if (country && (country.length !== 2 || !/^[A-Z]{2}$/.test(country))) {
+        console.warn(`Invalid country code format: ${country}, removing location data`);
+        country = undefined;
+      }
+
+      // Only return location data if we have a valid country code
+      if (country) {
+        return {
+          country,
+          timezone
+        };
+      } else {
+        console.log('No valid country code could be determined from browser');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error getting location from browser:', error);
+      return null;
+    }
   };
 
   const services = [
@@ -402,13 +427,18 @@ const AIConsensusComplete: React.FC = () => {
   };
 
   const sendQuestion = async () => {
+    if (isSendingRef.current) {
+      return;
+    }
+
     if (!question.trim() || selectedServices.length === 0) {
       alert('Please enter a question and select at least one AI service');
       return;
     }
 
-    const currentQuestion = question;
+    isSendingRef.current = true;
     setLoading(true);
+    const currentQuestion = question;
 
     // Archive current responses as a conversation exchange if we have any
     if (responses.length > 0 && conversationHistory.length > 0) {
@@ -458,20 +488,21 @@ const AIConsensusComplete: React.FC = () => {
       textareaRef.current.style.height = '48px'; // Reset to min height
     }
 
-    // Save user message to database and add to conversation history
-    await saveMessage('user', currentQuestion);
-    await updateConversationTitle(currentQuestion);
-    setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
-
-    // Trigger conversation list refresh after first message (so it appears in sidebar)
-    if (conversationHistory.length === 0) {
-      setConversationRefreshTrigger(prev => prev + 1);
-    }
-
     try {
+      // Save user message to database and add to conversation history
+      await saveMessage('user', currentQuestion);
+      await updateConversationTitle(currentQuestion);
+      setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
+
+      // Trigger conversation list refresh after first message (so it appears in sidebar)
+      if (conversationHistory.length === 0) {
+        setConversationRefreshTrigger(prev => prev + 1);
+      }
+
       // Get user location if web search is enabled
       let locationData = null;
       if (webSearchEnabled) {
+        setSearchingInternet(true);
         console.log('[FRONTEND] Web search is enabled, getting location...');
         locationData = await getUserLocation();
         if (locationData) {
@@ -510,6 +541,10 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
+      // Keep searchingInternet true if web search is enabled (backend will do web search first)
+      // Otherwise, show AI thinking indicator with loading state
+      // If webSearchEnabled is true, searchingInternet is already true from above
+
       const response = await fetch('http://localhost:8000/api/v1/test-ai/', {
         method: 'POST',
         headers,
@@ -520,6 +555,7 @@ const AIConsensusComplete: React.FC = () => {
       const data = await response.json();
 
       if (data.success) {
+        console.log('[FRONTEND] Received web_search_sources:', data.web_search_sources);
         setResponses(data.results);
         setWebSearchSources(data.web_search_sources || []);
 
@@ -548,12 +584,15 @@ const AIConsensusComplete: React.FC = () => {
         }
       } else {
         console.error('API Error:', data.error);
-        alert('Error: ' + data.error);
+        alert('Error: ' + (data.error || 'An unexpected error occurred. Please try again.'));
       }
     } catch (error) {
       console.error('Network error:', error);
-      alert('Network error: ' + error);
+      const errorMessage = error instanceof Error ? error.message : 'Network connection failed. Please check your connection and try again.';
+      alert('Network error: ' + errorMessage);
     } finally {
+      isSendingRef.current = false;
+      setSearchingInternet(false);
       setLoading(false);
     }
   };
@@ -633,11 +672,12 @@ const AIConsensusComplete: React.FC = () => {
         // Refresh conversation list to show updated costs
         setConversationRefreshTrigger(prev => prev + 1);
       } else {
-        alert('Critique failed: ' + data.error);
+        alert('Critique failed: ' + (data.error || 'Unable to generate critique. Please try again.'));
       }
     } catch (error) {
       console.error('Critique error:', error);
-      alert('Critique error: ' + error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate critique. Please try again.';
+      alert('Critique error: ' + errorMessage);
     } finally {
       setLoadingCritique(false);
     }
@@ -687,11 +727,12 @@ const AIConsensusComplete: React.FC = () => {
         // Refresh conversation list to show updated costs
         setConversationRefreshTrigger(prev => prev + 1);
       } else {
-        alert('Synthesis failed: ' + data.error);
+        alert('Synthesis failed: ' + (data.error || 'Unable to generate synthesis. Please try again.'));
       }
     } catch (error) {
       console.error('Synthesis error:', error);
-      alert('Synthesis error: ' + error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate synthesis. Please try again.';
+      alert('Synthesis error: ' + errorMessage);
     } finally {
       setLoadingSynthesis(false);
     }
@@ -756,11 +797,12 @@ const AIConsensusComplete: React.FC = () => {
         // Refresh conversation list after saving
         setConversationRefreshTrigger(prev => prev + 1);
       } else {
-        alert('Cross-reflection failed: ' + data.error);
+        alert('Cross-reflection failed: ' + (data.error || 'Unable to generate cross-reflection. Please try again.'));
       }
     } catch (error) {
       console.error('Cross-reflection error:', error);
-      alert('Cross-reflection error: ' + error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate cross-reflection. Please try again.';
+      alert('Cross-reflection error: ' + errorMessage);
     } finally {
       setLoadingCrossReflection(false);
     }
@@ -814,11 +856,12 @@ const AIConsensusComplete: React.FC = () => {
         // Refresh conversation list to show updated costs
         setConversationRefreshTrigger(prev => prev + 1);
       } else {
-        alert('Critique failed: ' + data.error);
+        alert('Critique failed: ' + (data.error || 'Unable to generate critique. Please try again.'));
       }
     } catch (error) {
       console.error('Critique error:', error);
-      alert('Critique error: ' + error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate critique. Please try again.';
+      alert('Critique error: ' + errorMessage);
     } finally {
       setLoadingPreviousCritique(prev => ({...prev, [exchangeKey]: false}));
     }
@@ -872,11 +915,12 @@ const AIConsensusComplete: React.FC = () => {
         // Refresh conversation list to show updated costs
         setConversationRefreshTrigger(prev => prev + 1);
       } else {
-        alert('Synthesis failed: ' + data.error);
+        alert('Synthesis failed: ' + (data.error || 'Unable to generate synthesis. Please try again.'));
       }
     } catch (error) {
       console.error('Synthesis error:', error);
-      alert('Synthesis error: ' + error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate synthesis. Please try again.';
+      alert('Synthesis error: ' + errorMessage);
     } finally {
       setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: false}));
     }
@@ -935,11 +979,12 @@ const AIConsensusComplete: React.FC = () => {
         // Refresh conversation list to show updated costs
         setConversationRefreshTrigger(prev => prev + 1);
       } else {
-        alert('Cross-reflection failed: ' + data.error);
+        alert('Cross-reflection failed: ' + (data.error || 'Unable to generate cross-reflection. Please try again.'));
       }
     } catch (error) {
       console.error('Cross-reflection error:', error);
-      alert('Cross-reflection error: ' + error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate cross-reflection. Please try again.';
+      alert('Cross-reflection error: ' + errorMessage);
     } finally {
       setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: false}));
     }
@@ -1074,13 +1119,6 @@ const AIConsensusComplete: React.FC = () => {
                 <X size={20} />
               </button>
             </div>
-            <button
-              onClick={handleNewConversation}
-              className="w-full flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-            >
-              <Plus size={16} />
-              New Chat
-            </button>
           </div>
           <div className="flex-1 overflow-hidden">
             <ConversationHistory
@@ -1822,8 +1860,25 @@ const AIConsensusComplete: React.FC = () => {
           </div>
         )}
 
-        {/* Loading State - Exactly like PNG */}
-        {loading && (
+        {/* Searching Internet State - Show during web search */}
+        {searchingInternet && (
+          <div className="max-w-4xl mx-auto mb-20">
+            <div className="bg-white border border-blue-200 rounded-lg overflow-hidden">
+              <div className="p-6">
+                <div className="flex items-center gap-3">
+                  <Globe className="w-5 h-5 text-blue-500 animate-pulse" />
+                  <h3 className="text-lg font-medium text-gray-900">Searching internet...</h3>
+                </div>
+                <div className="mt-2 text-gray-600 text-sm">
+                  Gathering information from web sources to enhance responses
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Loading State - Show when generating AI responses (and not searching) */}
+        {loading && !searchingInternet && (
           <div className="space-y-6 max-w-4xl mx-auto mb-20">
             {selectedServices.map((serviceId, index) => {
               const service = services.find(s => s.id === serviceId);

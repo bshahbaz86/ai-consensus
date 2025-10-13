@@ -60,13 +60,18 @@ Guidelines:
         return {'synopsis': "Synopsis generation failed", 'metadata': {}, 'success': False}
 
 
-async def process_claude(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query):
+async def process_claude(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query, user=None):
     """Process Claude request with main response and synopsis generation."""
     try:
+        # Use user's preferred model or fallback to default
+        claude_model = 'claude-sonnet-4-5-20250929'  # Default
+        if user and hasattr(user, 'claude_model') and user.claude_model:
+            claude_model = user.claude_model
+
         claude_service = AIServiceFactory.create_service(
             'claude',
             settings.CLAUDE_API_KEY,
-            model='claude-sonnet-4-20250514'
+            model=claude_model
         )
 
         # Prepare context
@@ -77,14 +82,17 @@ async def process_claude(message: str, chat_history: str, web_search_context: st
             enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
 
         if web_search_context and use_web_search and search_result and search_result.get('success', False):
+            print(f"[AI] Adding web search context with {len(search_result.get('results', []))} sources")
             context['web_search'] = {
                 'enabled': True,
                 'results': search_result['results']
             }
             if chat_history:
-                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. When referencing information from the web search results, use numbered citations like [1], [2], [3] that correspond to the source numbers above."
             else:
-                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. When referencing information from the web search results, use numbered citations like [1], [2], [3] that correspond to the source numbers above."
+        else:
+            print(f"[AI] No web search context - web_search_context exists: {bool(web_search_context)}, use_web_search: {use_web_search}, search_result success: {search_result.get('success') if search_result else 'N/A'}")
 
         # Get main response
         claude_response = await claude_service.generate_response(enhanced_message, context)
@@ -97,7 +105,7 @@ async def process_claude(message: str, chat_history: str, web_search_context: st
                 claude_response['content'],
                 'claude',
                 settings.CLAUDE_API_KEY,
-                'claude-sonnet-4-20250514'
+                claude_model
             )
             synopsis = synopsis_result.get('synopsis', 'No synopsis available')
 
@@ -108,8 +116,8 @@ async def process_claude(message: str, chat_history: str, web_search_context: st
         )
         total_tokens = calculate_total_tokens(input_tokens, output_tokens)
 
-        # Create AIResponse records
-        if ai_query:
+        # Create AIResponse records - only if we have valid content
+        if ai_query and claude_response['success'] and claude_response['content']:
             try:
                 claude_service_obj = await sync_to_async(AIService.objects.get)(name='claude')
 
@@ -144,6 +152,9 @@ async def process_claude(message: str, chat_history: str, web_search_context: st
                     )
             except Exception as e:
                 print(f"Failed to create AIResponse for Claude: {e}")
+        elif ai_query and not claude_response['success']:
+            # Log failed requests for debugging
+            print(f"Skipping AIResponse creation for Claude - request failed: {claude_response.get('error')}")
 
         return {
             'service': 'Claude',
@@ -166,13 +177,18 @@ async def process_claude(message: str, chat_history: str, web_search_context: st
         }
 
 
-async def process_openai(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query):
+async def process_openai(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query, user=None):
     """Process OpenAI request with main response and synopsis generation."""
     try:
+        # Use user's preferred model or fallback to default
+        openai_model = 'gpt-4o'  # Default
+        if user and hasattr(user, 'openai_model') and user.openai_model:
+            openai_model = user.openai_model
+
         openai_service = AIServiceFactory.create_service(
             'openai',
             settings.OPENAI_API_KEY,
-            model='gpt-4o'
+            model=openai_model
         )
 
         # Prepare context
@@ -183,14 +199,17 @@ async def process_openai(message: str, chat_history: str, web_search_context: st
             enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
 
         if web_search_context and use_web_search and search_result and search_result.get('success', False):
+            print(f"[AI] Adding web search context with {len(search_result.get('results', []))} sources")
             context['web_search'] = {
                 'enabled': True,
                 'results': search_result['results']
             }
             if chat_history:
-                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. When referencing information from the web search results, use numbered citations like [1], [2], [3] that correspond to the source numbers above."
             else:
-                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. When referencing information from the web search results, use numbered citations like [1], [2], [3] that correspond to the source numbers above."
+        else:
+            print(f"[AI] No web search context - web_search_context exists: {bool(web_search_context)}, use_web_search: {use_web_search}, search_result success: {search_result.get('success') if search_result else 'N/A'}")
 
         # Get main response
         openai_response = await openai_service.generate_response(enhanced_message, context)
@@ -203,7 +222,7 @@ async def process_openai(message: str, chat_history: str, web_search_context: st
                 openai_response['content'],
                 'openai',
                 settings.OPENAI_API_KEY,
-                'gpt-4o'
+                openai_model
             )
             synopsis = synopsis_result.get('synopsis', 'No synopsis available')
 
@@ -214,8 +233,8 @@ async def process_openai(message: str, chat_history: str, web_search_context: st
         )
         total_tokens = calculate_total_tokens(input_tokens, output_tokens)
 
-        # Create AIResponse records
-        if ai_query:
+        # Create AIResponse records - only if we have valid content
+        if ai_query and openai_response['success'] and openai_response['content']:
             try:
                 openai_service_obj = await sync_to_async(AIService.objects.get)(name='openai')
 
@@ -250,6 +269,9 @@ async def process_openai(message: str, chat_history: str, web_search_context: st
                     )
             except Exception as e:
                 print(f"Failed to create AIResponse for OpenAI: {e}")
+        elif ai_query and not openai_response['success']:
+            # Log failed requests for debugging
+            print(f"Skipping AIResponse creation for OpenAI - request failed: {openai_response.get('error')}")
 
         return {
             'service': 'OpenAI',
@@ -272,13 +294,18 @@ async def process_openai(message: str, chat_history: str, web_search_context: st
         }
 
 
-async def process_gemini(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query):
+async def process_gemini(message: str, chat_history: str, web_search_context: str, search_result: dict, use_web_search: bool, ai_query, user=None):
     """Process Gemini request with main response and synopsis generation."""
     try:
+        # Use user's preferred model or fallback to default
+        gemini_model = 'models/gemini-flash-latest'  # Default
+        if user and hasattr(user, 'gemini_model') and user.gemini_model:
+            gemini_model = user.gemini_model
+
         gemini_service = AIServiceFactory.create_service(
             'gemini',
             settings.GEMINI_API_KEY,
-            model='gemini-2.0-flash-exp'
+            model=gemini_model
         )
 
         # Prepare context
@@ -289,14 +316,17 @@ async def process_gemini(message: str, chat_history: str, web_search_context: st
             enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nNew user question:\n{message}"
 
         if web_search_context and use_web_search and search_result and search_result.get('success', False):
+            print(f"[AI] Adding web search context with {len(search_result.get('results', []))} sources")
             context['web_search'] = {
                 'enabled': True,
                 'results': search_result['results']
             }
             if chat_history:
-                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                enhanced_message = f"Previous conversation:\n{chat_history}\n\n{'='*50}\n\nCurrent web information:\n{web_search_context}\n\n{'='*50}\n\nNew user question:\n{message}\n\nPlease provide a comprehensive response considering the conversation context and using both the current web information above and your knowledge. When referencing information from the web search results, use numbered citations like [1], [2], [3] that correspond to the source numbers above."
             else:
-                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. Cite sources when referencing specific information from the web search results."
+                enhanced_message = f"Current web information:\n{web_search_context}\n\n{'='*50}\n\nUser question:\n{message}\n\nPlease provide a comprehensive response using both the current web information above and your knowledge. When referencing information from the web search results, use numbered citations like [1], [2], [3] that correspond to the source numbers above."
+        else:
+            print(f"[AI] No web search context - web_search_context exists: {bool(web_search_context)}, use_web_search: {use_web_search}, search_result success: {search_result.get('success') if search_result else 'N/A'}")
 
         # Get main response
         gemini_response = await gemini_service.generate_response(enhanced_message, context)
@@ -309,7 +339,7 @@ async def process_gemini(message: str, chat_history: str, web_search_context: st
                 gemini_response['content'],
                 'gemini',
                 settings.GEMINI_API_KEY,
-                'gemini-2.0-flash-exp'
+                gemini_model
             )
             synopsis = synopsis_result.get('synopsis', 'No synopsis available')
 
@@ -320,8 +350,8 @@ async def process_gemini(message: str, chat_history: str, web_search_context: st
         )
         total_tokens = calculate_total_tokens(input_tokens, output_tokens)
 
-        # Create AIResponse records
-        if ai_query:
+        # Create AIResponse records - only if we have valid content
+        if ai_query and gemini_response['success'] and gemini_response['content']:
             try:
                 gemini_service_obj = await sync_to_async(AIService.objects.get)(name='gemini')
 
@@ -356,6 +386,9 @@ async def process_gemini(message: str, chat_history: str, web_search_context: st
                     )
             except Exception as e:
                 print(f"Failed to create AIResponse for Gemini: {e}")
+        elif ai_query and not gemini_response['success']:
+            # Log failed requests for debugging
+            print(f"Skipping AIResponse creation for Gemini - request failed: {gemini_response.get('error')}")
 
         return {
             'service': 'Gemini',
@@ -384,11 +417,13 @@ async def process_all_services_async(message: str, services: list, use_web_searc
     """
     # Create AIQuery for cost tracking if a conversation is provided
     ai_query = None
+    user = None
     if conversation_id:
         try:
             conversation = await sync_to_async(Conversation.objects.select_related('user').get)(
                 id=conversation_id
             )
+            user = conversation.user  # Store user for model preferences
             ai_query = await sync_to_async(AIQuery.objects.create)(
                 user=conversation.user,
                 conversation=conversation,
@@ -423,7 +458,8 @@ async def process_all_services_async(message: str, services: list, use_web_searc
                 )
 
             # Wrap in timeout - fail gracefully if takes too long
-            search_result = await asyncio.wait_for(search_with_timeout(), timeout=15.0)
+            # Set to 200s to allow for Reka's actual response time (~55s) + 2 retries × 95s = ~200s max
+            search_result = await asyncio.wait_for(search_with_timeout(), timeout=200.0)
 
             print(f"[WEB SEARCH] Search result success: {search_result.get('success')}")
             print(f"[WEB SEARCH] Search result error: {search_result.get('error')}")
@@ -442,7 +478,7 @@ async def process_all_services_async(message: str, services: list, use_web_searc
             else:
                 print(f"[WEB SEARCH] No valid search results to process")
         except asyncio.TimeoutError:
-            print(f"[WEB SEARCH] Web search timed out after 15 seconds - continuing without search")
+            print(f"[WEB SEARCH] Web search timed out after 120 seconds - continuing without search")
         except Exception as e:
             print(f"[WEB SEARCH] Web search failed: {str(e)}")
             import traceback
@@ -452,13 +488,13 @@ async def process_all_services_async(message: str, services: list, use_web_searc
     tasks = []
 
     if 'claude' in services and settings.CLAUDE_API_KEY:
-        tasks.append(process_claude(message, chat_history, web_search_context, search_result, use_web_search, ai_query))
+        tasks.append(process_claude(message, chat_history, web_search_context, search_result, use_web_search, ai_query, user))
 
     if 'openai' in services and settings.OPENAI_API_KEY:
-        tasks.append(process_openai(message, chat_history, web_search_context, search_result, use_web_search, ai_query))
+        tasks.append(process_openai(message, chat_history, web_search_context, search_result, use_web_search, ai_query, user))
 
     if 'gemini' in services and settings.GEMINI_API_KEY:
-        tasks.append(process_gemini(message, chat_history, web_search_context, search_result, use_web_search, ai_query))
+        tasks.append(process_gemini(message, chat_history, web_search_context, search_result, use_web_search, ai_query, user))
 
     # Run all service requests concurrently
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -492,7 +528,23 @@ async def process_all_services_async(message: str, services: list, use_web_searc
         except Exception as e:
             print(f"Failed to update AIQuery: {e}")
 
-    return processed_results
+    # Extract web search sources for frontend citations
+    web_search_sources = []
+    if search_result.get('success') and search_result.get('results'):
+        for result in search_result['results']:
+            web_search_sources.append({
+                'title': result.get('title', 'Untitled'),
+                'url': result.get('url', ''),
+                'snippet': result.get('content', '')[:200] if result.get('content') else '',
+                'source': result.get('source', ''),
+                'published_date': result.get('published_date', '')
+            })
+        print(f"[WEB SEARCH] Prepared {len(web_search_sources)} sources for frontend")
+
+    return {
+        'results': processed_results,
+        'web_search_sources': web_search_sources
+    }
 
 
 @api_view(['POST'])
@@ -520,8 +572,11 @@ def test_ai_services(request):
         chat_history = data.get('chat_history', '')
         conversation_id = data.get('conversation_id')
 
+        # Debug logging
+        print(f"[TEST_AI] Request received - use_web_search: {use_web_search}, user_location: {user_location}")
+
         # Run async processing
-        results = asyncio.run(
+        response_data = asyncio.run(
             process_all_services_async(
                 message=message,
                 services=services,
@@ -534,7 +589,8 @@ def test_ai_services(request):
 
         return JsonResponse({
             'success': True,
-            'results': results,
+            'results': response_data['results'],
+            'web_search_sources': response_data.get('web_search_sources', []),
             'timestamp': timezone.now().isoformat()
         })
 
