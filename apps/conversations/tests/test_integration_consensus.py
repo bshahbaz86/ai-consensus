@@ -18,7 +18,12 @@ from apps.responses.models import AIResponse
 User = get_user_model()
 
 
-@override_settings(ENABLE_CONSENSUS_ENDPOINTS=True)
+@override_settings(
+    ENABLE_CONSENSUS_ENDPOINTS=True,
+    CLAUDE_API_KEY='test-claude-key',
+    OPENAI_API_KEY='test-openai-key',
+    GEMINI_API_KEY='test-gemini-key'
+)
 class ConsensusIntegrationTests(TransactionTestCase):
     """Test consensus endpoints with full integration flow."""
 
