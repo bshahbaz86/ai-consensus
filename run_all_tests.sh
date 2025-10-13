@@ -117,7 +117,7 @@ print_summary() {
     fi
 
     echo ""
-    echo "Total: 91 tests"
+    echo "Total: 98 tests"
     echo ""
 
     if [ "$BACKEND_PASSED" = true ] && [ "$FRONTEND_PASSED" = true ]; then
