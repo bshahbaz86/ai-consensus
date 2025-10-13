@@ -58,6 +58,7 @@ const AIConsensusComplete: React.FC = () => {
 
   // Ref to prevent duplicate conversation creation in StrictMode
   const conversationInitialized = useRef(false);
+  const isSendingRef = useRef(false);
 
   // Conversation tracking for chat history
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -426,11 +427,17 @@ const AIConsensusComplete: React.FC = () => {
   };
 
   const sendQuestion = async () => {
+    if (isSendingRef.current) {
+      return;
+    }
+
     if (!question.trim() || selectedServices.length === 0) {
       alert('Please enter a question and select at least one AI service');
       return;
     }
 
+    isSendingRef.current = true;
+    setLoading(true);
     const currentQuestion = question;
 
     // Archive current responses as a conversation exchange if we have any
@@ -481,17 +488,17 @@ const AIConsensusComplete: React.FC = () => {
       textareaRef.current.style.height = '48px'; // Reset to min height
     }
 
-    // Save user message to database and add to conversation history
-    await saveMessage('user', currentQuestion);
-    await updateConversationTitle(currentQuestion);
-    setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
-
-    // Trigger conversation list refresh after first message (so it appears in sidebar)
-    if (conversationHistory.length === 0) {
-      setConversationRefreshTrigger(prev => prev + 1);
-    }
-
     try {
+      // Save user message to database and add to conversation history
+      await saveMessage('user', currentQuestion);
+      await updateConversationTitle(currentQuestion);
+      setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
+
+      // Trigger conversation list refresh after first message (so it appears in sidebar)
+      if (conversationHistory.length === 0) {
+        setConversationRefreshTrigger(prev => prev + 1);
+      }
+
       // Get user location if web search is enabled
       let locationData = null;
       if (webSearchEnabled) {
@@ -534,12 +541,8 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
-      // Set loading state BEFORE making the fetch request
       // Keep searchingInternet true if web search is enabled (backend will do web search first)
-      // Otherwise, show AI thinking indicator
-      if (!webSearchEnabled) {
-        setLoading(true);
-      }
+      // Otherwise, show AI thinking indicator with loading state
       // If webSearchEnabled is true, searchingInternet is already true from above
 
       const response = await fetch('http://localhost:8000/api/v1/test-ai/', {
@@ -588,6 +591,7 @@ const AIConsensusComplete: React.FC = () => {
       const errorMessage = error instanceof Error ? error.message : 'Network connection failed. Please check your connection and try again.';
       alert('Network error: ' + errorMessage);
     } finally {
+      isSendingRef.current = false;
       setSearchingInternet(false);
       setLoading(false);
     }
