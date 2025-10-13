@@ -241,10 +241,10 @@ CLAUDE_API_KEY = config('CLAUDE_API_KEY', default='')
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 
-# Test/Diagnostic Endpoints Configuration
-# SECURITY: These endpoints should only be enabled in development
-# Set to False in production to prevent unauthorized AI API usage
-ENABLE_TEST_AI_ENDPOINTS = config('ENABLE_TEST_AI_ENDPOINTS', default=DEBUG, cast=bool)
+# Consensus Endpoints Configuration
+# Core product feature for multi-AI consensus queries
+# Can be disabled in production if needed to control API costs
+ENABLE_CONSENSUS_ENDPOINTS = config('ENABLE_CONSENSUS_ENDPOINTS', default=True, cast=bool)
 
 # Reka API Configuration
 REKA_API_KEY = config('REKA_API_KEY', default='')
