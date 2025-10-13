@@ -4,7 +4,7 @@ ChatAI API v1 URL Configuration
 Routes for the REST API endpoints.
 """
 from django.urls import path, include
-from .test_ai import test_ai_services, critique_compare, combine_responses, cross_reflect
+from .consensus_ai import test_ai_services, critique_compare, combine_responses, cross_reflect
 
 app_name = 'api_v1'
 
@@ -13,8 +13,8 @@ urlpatterns = [
     path('conversations/', include('api.v1.conversations.urls', namespace='conversations')),
     path('ai-services/', include('api.v1.ai_services.urls')),
     path('responses/', include('api.v1.responses.urls')),
-    path('test-ai/', test_ai_services, name='test_ai'),
-    path('critique/compare/', critique_compare, name='critique_compare'),
-    path('critique/combine/', combine_responses, name='combine_responses'),
-    path('critique/cross/', cross_reflect, name='cross_reflect'),
+    path('consensus/', test_ai_services, name='consensus'),
+    path('consensus/synthesis/', combine_responses, name='consensus_synthesis'),
+    path('consensus/critique/', critique_compare, name='consensus_critique'),
+    path('consensus/cross-reflect/', cross_reflect, name='consensus_cross_reflect'),
 ]

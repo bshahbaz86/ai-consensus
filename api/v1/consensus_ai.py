@@ -15,15 +15,15 @@ from django.utils import timezone
 from asgiref.sync import sync_to_async
 
 
-def check_test_endpoints_enabled():
+def check_consensus_endpoints_enabled():
     """
-    Check if test endpoints are enabled.
+    Check if consensus endpoints are enabled.
     Raises JsonResponse with 403 status if disabled.
     """
-    if not getattr(settings, 'ENABLE_TEST_AI_ENDPOINTS', False):
+    if not getattr(settings, 'ENABLE_CONSENSUS_ENDPOINTS', True):
         return JsonResponse({
             'success': False,
-            'error': 'Test AI endpoints are disabled. Enable ENABLE_TEST_AI_ENDPOINTS in settings to use these diagnostic endpoints.'
+            'error': 'Consensus endpoints are disabled. Enable ENABLE_CONSENSUS_ENDPOINTS in settings to use these endpoints.'
         }, status=403)
 async def generate_synopsis_with_same_ai(content: str, ai_service_name: str, api_key: str, model: str) -> dict:
     """
@@ -551,15 +551,15 @@ async def process_all_services_async(message: str, services: list, use_web_searc
 @permission_classes([IsAuthenticated])
 def test_ai_services(request):
     """
-    Parallelized test endpoint for AI service integration.
-    POST /api/v1/test-ai/
-    Body: {"message": "test question", "services": ["claude", "openai"], "use_web_search": true}
+    Parallel consensus query across multiple AI services.
+    POST /api/v1/consensus/
+    Body: {"message": "query", "services": ["claude", "openai"], "use_web_search": true}
 
-    SECURITY: This endpoint is for testing/diagnostics only.
-    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
+    Returns responses from all requested AI services with cost tracking.
+    Requires authentication.
     """
-    # Check if test endpoints are enabled
-    disabled_response = check_test_endpoints_enabled()
+    # Check if consensus endpoints are enabled
+    disabled_response = check_consensus_endpoints_enabled()
     if disabled_response:
         return disabled_response
 
@@ -604,12 +604,12 @@ def test_ai_services(request):
 def combine_responses(request):
     """
     Combine two LLM responses into a unified synthesis.
+    POST /api/v1/consensus/synthesis/
 
-    SECURITY: This endpoint is for testing/diagnostics only.
-    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
+    Requires authentication.
     """
-    # Check if test endpoints are enabled
-    disabled_response = check_test_endpoints_enabled()
+    # Check if consensus endpoints are enabled
+    disabled_response = check_consensus_endpoints_enabled()
     if disabled_response:
         return disabled_response
 
@@ -786,12 +786,12 @@ Please provide your synthesis now:"""
 def critique_compare(request):
     """
     Compare two LLM responses using AI critique framework.
+    POST /api/v1/consensus/critique/
 
-    SECURITY: This endpoint is for testing/diagnostics only.
-    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
+    Requires authentication.
     """
-    # Check if test endpoints are enabled
-    disabled_response = check_test_endpoints_enabled()
+    # Check if consensus endpoints are enabled
+    disabled_response = check_consensus_endpoints_enabled()
     if disabled_response:
         return disabled_response
 
@@ -987,12 +987,12 @@ def cross_reflect(request):
     """
     Generate cross-reflections where each LLM reflects on the other's response.
     Each LLM receives the peer's answer and provides a reflection/critique.
+    POST /api/v1/consensus/cross-reflect/
 
-    SECURITY: This endpoint is for testing/diagnostics only.
-    Requires authentication and ENABLE_TEST_AI_ENDPOINTS=True in settings.
+    Requires authentication.
     """
-    # Check if test endpoints are enabled
-    disabled_response = check_test_endpoints_enabled()
+    # Check if consensus endpoints are enabled
+    disabled_response = check_consensus_endpoints_enabled()
     if disabled_response:
         return disabled_response
 

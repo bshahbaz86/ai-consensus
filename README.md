@@ -469,14 +469,169 @@ curl -X POST http://localhost:8001/api/v1/critique/compare/ \
 
 ## Development
 
-### Running Tests
+### Testing
+
+The project includes comprehensive test suites for both backend (Django) and frontend (React) with **91 total tests** ensuring reliability and correctness.
+
+#### Test Structure
+
+**Backend Tests** (26 tests):
+- `apps/conversations/tests/test_integration_consensus.py` - Integration tests for consensus flow
+- `apps/accounts/tests/test_security.py` - Security tests for authentication, encryption, and user isolation
+
+**Frontend Tests** (72 tests):
+- `src/App.test.tsx` - App component rendering and integration (11 tests)
+- `src/components/ChatLayout.test.tsx` - Conversation management UI (17 tests)
+- `src/components/AIConsensusComplete.test.tsx` - Consensus interface (21 tests)
+- `src/services/api.test.ts` - API service contract tests (23 tests)
+
+#### Running Tests
+
+**🚀 Quick Start - Run All Tests with One Command:**
 ```bash
-# Backend tests
+# From project root - runs all 91 tests (26 backend + 72 frontend)
+./run_all_tests.sh
+```
+
+This comprehensive test runner:
+- ✅ Runs all backend tests (integration + security)
+- ✅ Runs all frontend tests (components + API contracts)
+- ✅ Color-coded output with clear pass/fail indicators
+- ✅ Proper error handling and exit codes
+- ✅ Automatically checks for virtual env and node_modules
+- ✅ Shows detailed summary at the end
+
+**Run All Backend Tests:**
+```bash
+# From project root
 python manage.py test
 
-# Frontend tests  
+# With coverage report
+python manage.py test --verbosity=2
+```
+
+**Run Specific Backend Test Suites:**
+```bash
+# Integration tests only
+python manage.py test apps.conversations.tests.test_integration_consensus
+
+# Security tests only
+python manage.py test apps.accounts.tests.test_security
+
+# SQLite mode (faster for CI/CD)
+USE_SQLITE=1 python manage.py test
+```
+
+**Run All Frontend Tests:**
+```bash
+# From frontend/frontend directory
 cd frontend/frontend
 npm test
+
+# Watch mode (auto-run on file changes)
+npm test -- --watch
+
+# With coverage
+npm test -- --coverage
+```
+
+**Run Specific Frontend Test Suites:**
+```bash
+# Single test file
+npm test -- App.test.tsx --watchAll=false
+
+# Component tests only
+npm test -- ChatLayout.test.tsx --watchAll=false
+
+# API contract tests
+npm test -- api.test.ts --watchAll=false
+
+# Run tests matching pattern
+npm test -- Consensus --watchAll=false
+```
+
+#### Test Coverage
+
+**Backend Test Coverage:**
+
+*Integration Tests* (7 tests):
+- Full consensus flow with multiple AI services
+- Partial service failure handling
+- Synthesis, critique, and cross-reflection endpoints
+- Web search timeout graceful degradation
+- Authentication requirements
+
+*Security Tests* (19 tests):
+- API key encryption/decryption (5 tests)
+- Authentication on all consensus endpoints (4 tests)
+- User isolation - preventing cross-user data access (5 tests)
+- Input validation including SQL injection and XSS (5 tests)
+
+**Frontend Test Coverage:**
+
+*Component Tests* (49 tests):
+- Component rendering and structure
+- User interactions (clicking, typing, form submissions)
+- Conversation management (create, select, navigate)
+- Service selection and consensus interface
+- Error handling and accessibility
+- Mobile responsiveness
+
+*API Contract Tests* (23 tests):
+- CSRF token management
+- Conversation CRUD operations
+- Search functionality
+- Authentication headers
+- Error handling
+- Request/response validation
+
+#### Pre-Push Testing Requirements
+
+Before pushing changes, ensure:
+
+✅ **All backend tests pass:**
+```bash
+python manage.py test
+```
+
+✅ **All frontend tests pass:**
+```bash
+cd frontend/frontend && npm test -- --watchAll=false
+```
+
+✅ **No console errors in browser** when running the app
+
+✅ **Critical user flows work:**
+- Create new conversation
+- Send message with Claude and Gemini selected
+- View AI responses
+- Select preferred response
+- Continue conversation
+
+#### Debugging Test Failures
+
+**Backend Test Issues:**
+```bash
+# Run with more verbose output
+python manage.py test --verbosity=2
+
+# Run single test method
+python manage.py test apps.conversations.tests.test_integration_consensus.ConsensusIntegrationTests.test_full_consensus_flow_all_services_succeed
+
+# Check for database locks (SQLite)
+USE_SQLITE=1 python manage.py test --verbosity=2
+```
+
+**Frontend Test Issues:**
+```bash
+# Clear Jest cache
+npm test -- --clearCache
+
+# Run with verbose output
+npm test -- --verbose --watchAll=false
+
+# Debug specific test
+npm test -- --testNamePattern="renders without crashing" --watchAll=false
 ```
 
 ### Code Quality

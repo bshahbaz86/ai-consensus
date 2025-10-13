@@ -37,7 +37,10 @@
   "jest": {
     "moduleNameMapper": {
       "^react-markdown$": "<rootDir>/src/__mocks__/react-markdown.tsx"
-    }
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!axios)"
+    ]
   },
   "eslintConfig": {
     "extends": [

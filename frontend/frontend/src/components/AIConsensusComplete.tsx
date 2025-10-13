@@ -545,7 +545,7 @@ const AIConsensusComplete: React.FC = () => {
       // Otherwise, show AI thinking indicator with loading state
       // If webSearchEnabled is true, searchingInternet is already true from above
 
-      const response = await fetch('http://localhost:8000/api/v1/test-ai/', {
+      const response = await fetch('http://localhost:8000/api/v1/consensus/', {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -657,7 +657,7 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/critique/compare/', {
+      const response = await fetch('http://localhost:8000/api/v1/consensus/critique/', {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -704,7 +704,7 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
+      const response = await fetch('http://localhost:8000/api/v1/consensus/synthesis/', {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -759,7 +759,7 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
+      const response = await fetch('http://localhost:8000/api/v1/consensus/cross-reflect/', {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -832,7 +832,7 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/critique/compare/', {
+      const response = await fetch('http://localhost:8000/api/v1/consensus/critique/', {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -891,7 +891,7 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/critique/combine/', {
+      const response = await fetch('http://localhost:8000/api/v1/consensus/synthesis/', {
         method: 'POST',
         headers,
         credentials: 'include',
@@ -950,7 +950,7 @@ const AIConsensusComplete: React.FC = () => {
         headers['X-CSRFToken'] = csrfToken;
       }
 
-      const response = await fetch('http://localhost:8000/api/v1/critique/cross/', {
+      const response = await fetch('http://localhost:8000/api/v1/consensus/cross-reflect/', {
         method: 'POST',
         headers,
         credentials: 'include',

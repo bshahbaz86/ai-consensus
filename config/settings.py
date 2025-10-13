@@ -7,7 +7,7 @@ A multi-agent AI chat aggregation platform.
 import os
 import sys
 from pathlib import Path
-from decouple import config
+from decouple import config, UndefinedValueError
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -241,10 +241,17 @@ CLAUDE_API_KEY = config('CLAUDE_API_KEY', default='')
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 
-# Test/Diagnostic Endpoints Configuration
-# SECURITY: These endpoints should only be enabled in development
-# Set to False in production to prevent unauthorized AI API usage
-ENABLE_TEST_AI_ENDPOINTS = config('ENABLE_TEST_AI_ENDPOINTS', default=DEBUG, cast=bool)
+# Consensus Endpoints Configuration
+# Core product feature for multi-AI consensus queries
+# Preserve legacy ENABLE_TEST_AI_ENDPOINTS for backwards compatibility.
+try:
+    ENABLE_CONSENSUS_ENDPOINTS = config('ENABLE_CONSENSUS_ENDPOINTS', cast=bool)
+except UndefinedValueError:
+    try:
+        ENABLE_CONSENSUS_ENDPOINTS = config('ENABLE_TEST_AI_ENDPOINTS', cast=bool)
+    except UndefinedValueError:
+        # Default to DEBUG so production stays locked down unless explicitly enabled
+        ENABLE_CONSENSUS_ENDPOINTS = DEBUG
 
 # Reka API Configuration
 REKA_API_KEY = config('REKA_API_KEY', default='')
