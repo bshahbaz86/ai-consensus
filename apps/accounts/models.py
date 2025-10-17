@@ -18,7 +18,28 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-    
+
+    # Google OAuth fields
+    google_id = models.CharField(max_length=255, blank=True, null=True, unique=True, db_index=True)
+    google_email = models.EmailField(blank=True, null=True)
+    google_profile_picture = models.URLField(max_length=500, blank=True, null=True)
+    google_access_token = models.TextField(blank=True, null=True)  # Will be encrypted
+    google_refresh_token = models.TextField(blank=True, null=True)  # Will be encrypted
+
+    # Authentication tracking
+    auth_method = models.CharField(
+        max_length=50,
+        choices=[
+            ('google_oauth', 'Google OAuth'),
+            ('temp_passcode', 'Temporary Passcode'),
+            ('permanent_password', 'Permanent Password'),
+        ],
+        blank=True,
+        null=True
+    )
+    has_permanent_password = models.BooleanField(default=False)
+    last_auth_at = models.DateTimeField(null=True, blank=True)
+
     # User preferences
     preferred_ai_service = models.CharField(
         max_length=50,
@@ -46,6 +67,41 @@ class User(AbstractUser):
         default='models/gemini-flash-latest',
         blank=True
     )
+
+    def _get_cipher(self):
+        """Get Fernet cipher for token encryption (reuse existing pattern)."""
+        key = base64.urlsafe_b64encode(settings.ENCRYPTION_KEY.encode()[:32])
+        return Fernet(key)
+
+    def encrypt_google_tokens(self, access_token, refresh_token):
+        """Encrypt Google OAuth tokens using existing Fernet pattern."""
+        cipher = self._get_cipher()
+
+        if access_token:
+            encrypted = cipher.encrypt(access_token.encode())
+            self.google_access_token = base64.urlsafe_b64encode(encrypted).decode()
+        if refresh_token:
+            encrypted = cipher.encrypt(refresh_token.encode())
+            self.google_refresh_token = base64.urlsafe_b64encode(encrypted).decode()
+
+    def decrypt_google_tokens(self):
+        """Decrypt Google OAuth tokens."""
+        cipher = self._get_cipher()
+
+        access_token = None
+        refresh_token = None
+
+        try:
+            if self.google_access_token:
+                encrypted = base64.urlsafe_b64decode(self.google_access_token.encode())
+                access_token = cipher.decrypt(encrypted).decode()
+            if self.google_refresh_token:
+                encrypted = base64.urlsafe_b64decode(self.google_refresh_token.encode())
+                refresh_token = cipher.decrypt(encrypted).decode()
+        except Exception:
+            pass  # Return None if decryption fails
+
+        return access_token, refresh_token
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']

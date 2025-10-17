@@ -7,9 +7,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.authtoken.models import Token
+from rest_framework.decorators import api_view, permission_classes
 from django.contrib.auth import login, logout
 from django.contrib.sessions.models import Session
 from django.conf import settings
+from django.utils import timezone
 from core.responses import success_response, error_response
 from apps.accounts.serializers import (
     UserRegistrationSerializer,
@@ -17,7 +19,8 @@ from apps.accounts.serializers import (
     UserProfileSerializer,
     APIKeySerializer
 )
-from apps.accounts.models import APIKey, UserSession
+from apps.accounts.models import APIKey, UserSession, User
+import requests
 
 
 class RegisterView(APIView):
@@ -206,3 +209,150 @@ class APIKeyManagementView(APIView):
                 message="API key not found",
                 status_code=status.HTTP_404_NOT_FOUND
             )
+
+
+# Google OAuth Views
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def google_oauth_init(request):
+    """
+    Initiate Google OAuth flow.
+    Returns the authorization URL for the frontend to redirect to.
+    """
+    # Build authorization URL
+    authorization_url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={settings.SOCIALACCOUNT_PROVIDERS['google']['APP']['client_id']}&"
+        f"redirect_uri={settings.FRONTEND_URL}/auth/google/callback&"
+        f"response_type=code&"
+        f"scope=openid%20profile%20email&"
+        f"access_type=online"
+    )
+
+    return success_response({
+        'authorization_url': authorization_url
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def google_oauth_callback(request):
+    """
+    Handle Google OAuth callback.
+    Exchange authorization code for tokens and create/login user.
+
+    Expected payload: { "code": "auth_code_from_google" }
+    """
+    code = request.data.get('code')
+    if not code:
+        return error_response(
+            message="Authorization code required",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Exchange code for tokens
+        token_url = 'https://oauth2.googleapis.com/token'
+        token_data = {
+            'code': code,
+            'client_id': settings.SOCIALACCOUNT_PROVIDERS['google']['APP']['client_id'],
+            'client_secret': settings.SOCIALACCOUNT_PROVIDERS['google']['APP']['secret'],
+            'redirect_uri': f"{settings.FRONTEND_URL}/auth/google/callback",
+            'grant_type': 'authorization_code',
+        }
+
+        token_response = requests.post(token_url, data=token_data)
+
+        if token_response.status_code != 200:
+            return error_response(
+                message="Failed to exchange authorization code",
+                errors={'detail': token_response.text},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        tokens = token_response.json()
+        access_token = tokens.get('access_token')
+
+        # Get user info from Google
+        user_info_response = requests.get(
+            'https://www.googleapis.com/oauth2/v2/userinfo',
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+
+        if user_info_response.status_code != 200:
+            return error_response(
+                message="Failed to fetch user information",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        user_info = user_info_response.json()
+
+        # Get or create user
+        google_id = user_info.get('id')
+        email = user_info.get('email')
+
+        user, created = User.objects.get_or_create(
+            google_id=google_id,
+            defaults={
+                'email': email,
+                'username': email.split('@')[0],
+                'display_name': user_info.get('name', ''),
+                'avatar': user_info.get('picture', ''),
+                'google_email': email,
+                'google_profile_picture': user_info.get('picture', ''),
+                'auth_method': 'google_oauth',
+                'is_active': True,
+            }
+        )
+
+        # Update if existing user
+        if not created:
+            user.google_email = email
+            user.google_profile_picture = user_info.get('picture', '')
+            user.auth_method = 'google_oauth'
+            user.last_auth_at = timezone.now()
+        else:
+            user.last_auth_at = timezone.now()
+
+        # Encrypt and save tokens
+        user.encrypt_google_tokens(
+            access_token,
+            tokens.get('refresh_token', '')
+        )
+        user.save()
+
+        # Create session
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+        # Create DRF token
+        token, _ = Token.objects.get_or_create(user=user)
+
+        # Create user session
+        if not request.session.session_key:
+            request.session.create()
+
+        UserSession.objects.update_or_create(
+            user=user,
+            session_key=request.session.session_key,
+            defaults={
+                'ip_address': request.META.get('REMOTE_ADDR'),
+                'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+                'is_active': True
+            }
+        )
+
+        # Serialize user data
+        return success_response({
+            'user': UserProfileSerializer(user).data,
+            'token': token.key,
+            'is_new_user': created,
+            'has_permanent_password': user.has_permanent_password,
+        }, message="Google authentication successful")
+
+    except Exception as e:
+        return error_response(
+            message="Google authentication failed",
+            errors={'detail': str(e)},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )

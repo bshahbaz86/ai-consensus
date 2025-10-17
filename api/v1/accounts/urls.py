@@ -18,6 +18,10 @@ urlpatterns = [
     path('register/', views.RegisterView.as_view(), name='register'),
     path('profile/', views.ProfileView.as_view(), name='profile'),
 
+    # Google OAuth endpoints
+    path('auth/google/init/', views.google_oauth_init, name='google-oauth-init'),
+    path('auth/google/callback/', views.google_oauth_callback, name='google-oauth-callback'),
+
     # API key management
     path('api-keys/', views.APIKeyManagementView.as_view(), name='api_keys'),
 
