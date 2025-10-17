@@ -33,6 +33,27 @@ const getCsrfToken = (): string | null => {
   return null;
 };
 
+// Helper function to get headers with both CSRF and Authorization tokens
+const getAuthHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add CSRF token
+  const csrfToken = getCsrfToken();
+  if (csrfToken) {
+    headers['X-CSRFToken'] = csrfToken;
+  }
+
+  // Add Authorization token (DRF TokenAuthentication format)
+  const authToken = localStorage.getItem('auth_token');
+  if (authToken) {
+    headers['Authorization'] = `Token ${authToken}`;
+  }
+
+  return headers;
+};
+
 const AIConsensusComplete: React.FC = () => {
   const [question, setQuestion] = useState('');
   const [responses, setResponses] = useState<AIResponse[]>([]);
@@ -304,13 +325,7 @@ const AIConsensusComplete: React.FC = () => {
 
     try {
       // Using direct fetch since we don't have a messages endpoint in apiService yet
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch(`http://localhost:8000/api/v1/conversations/${currentConversationId}/messages/`, {
         method: 'POST',
@@ -531,15 +546,10 @@ const AIConsensusComplete: React.FC = () => {
         chat_history: requestBody.chat_history ? 'present' : 'empty'
       });
 
+      const headers = getAuthHeaders();
       const csrfToken = getCsrfToken();
       console.log('[FRONTEND] CSRF Token:', csrfToken ? 'found' : 'NOT FOUND');
       console.log('[FRONTEND] All cookies:', document.cookie);
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
 
       // Keep searchingInternet true if web search is enabled (backend will do web search first)
       // Otherwise, show AI thinking indicator with loading state
@@ -649,13 +659,7 @@ const AIConsensusComplete: React.FC = () => {
 
       console.log('[CRITIQUE DEBUG] Request body:', JSON.stringify(requestBody, null, 2));
 
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/critique/', {
         method: 'POST',
@@ -696,13 +700,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingSynthesis(true);
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/synthesis/', {
         method: 'POST',
@@ -751,13 +749,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingCrossReflection(true);
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/cross-reflect/', {
         method: 'POST',
@@ -824,13 +816,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousCritique(prev => ({...prev, [exchangeKey]: true}));
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/critique/', {
         method: 'POST',
@@ -883,13 +869,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: true}));
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/synthesis/', {
         method: 'POST',
@@ -942,13 +922,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: true}));
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/cross-reflect/', {
         method: 'POST',

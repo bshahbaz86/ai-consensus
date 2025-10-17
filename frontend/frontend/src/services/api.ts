@@ -61,7 +61,12 @@ class ApiService {
 
   constructor(baseUrl: string = 'http://localhost:8000') {
     this.baseUrl = baseUrl;
-    // In a real app, this would come from authentication
+    // Read token from localStorage on initialization
+    this.token = localStorage.getItem('auth_token');
+  }
+
+  // Refresh token from localStorage (useful after login)
+  refreshToken() {
     this.token = localStorage.getItem('auth_token');
   }
 
@@ -125,8 +130,14 @@ class ApiService {
       });
     }
 
+    // Refresh token from localStorage if not already loaded
+    if (!this.token) {
+      this.token = localStorage.getItem('auth_token');
+    }
+
+    // DRF TokenAuthentication expects "Token <token>" format, not "Bearer <token>"
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+      headers['Authorization'] = `Token ${this.token}`;
     }
 
     const response = await fetch(url, {
