@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import './LandingPage.css';
 
 const LandingPage: React.FC = () => {
-  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
@@ -32,11 +30,11 @@ const LandingPage: React.FC = () => {
   };
 
   const handleEmailSignIn = () => {
-    navigate('/auth/passcode');
+    alert('Email passcode authentication is coming soon! For now, please use "Continue with Google".');
   };
 
   const handlePasswordSignIn = () => {
-    navigate('/auth/password');
+    alert('Password authentication is coming soon! For now, please use "Continue with Google".');
   };
 
   return (
