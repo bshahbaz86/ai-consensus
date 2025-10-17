@@ -26,6 +26,8 @@ const GoogleCallback: React.FC = () => {
       }
 
       try {
+        console.log('[OAuth] Sending authorization code to backend:', code);
+
         // Send authorization code to backend
         const response = await fetch('http://localhost:8000/api/v1/accounts/auth/google/callback/', {
           method: 'POST',
@@ -36,7 +38,10 @@ const GoogleCallback: React.FC = () => {
           body: JSON.stringify({ code }),
         });
 
+        console.log('[OAuth] Response status:', response.status);
+
         const data = await response.json();
+        console.log('[OAuth] Response data:', data);
 
         if (data.success) {
           // Save token
@@ -52,11 +57,12 @@ const GoogleCallback: React.FC = () => {
             navigate('/');
           }, 1000);
         } else {
+          console.error('[OAuth] Backend returned error:', data.message);
           setStatus('error');
           setErrorMessage(data.message || 'Authentication failed');
         }
       } catch (error) {
-        console.error('Error processing Google callback:', error);
+        console.error('[OAuth] Error processing Google callback:', error);
         setStatus('error');
         setErrorMessage('Network error during authentication');
       }

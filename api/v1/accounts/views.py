@@ -7,7 +7,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.authtoken.models import Token
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import login, logout
 from django.contrib.sessions.models import Session
 from django.conf import settings
@@ -236,6 +237,7 @@ def google_oauth_init(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])  # Disable authentication to bypass CSRF for OAuth callback
 @permission_classes([permissions.AllowAny])
 def google_oauth_callback(request):
     """
