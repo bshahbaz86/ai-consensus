@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.db.models import Q, Prefetch
+from django.db import connection
 from django.shortcuts import get_object_or_404
 import uuid
 
@@ -95,10 +96,16 @@ class ConversationViewSet(viewsets.ModelViewSet):
         # Apply search query
         search_query = serializer.validated_data.get('q')
         if search_query:
-            queryset = queryset.annotate(
-                search=SearchVector('title', 'messages__content'),
-                rank=SearchRank(SearchVector('title', 'messages__content'), SearchQuery(search_query))
-            ).filter(search=SearchQuery(search_query)).order_by('-rank', '-updated_at')
+            if connection.vendor == 'postgresql':
+                queryset = queryset.annotate(
+                    search=SearchVector('title', 'messages__content'),
+                    rank=SearchRank(SearchVector('title', 'messages__content'), SearchQuery(search_query))
+                ).filter(search=SearchQuery(search_query)).order_by('-rank', '-updated_at')
+            else:
+                queryset = queryset.filter(
+                    Q(title__icontains=search_query) |
+                    Q(messages__content__icontains=search_query)
+                ).distinct().order_by('-updated_at')
 
         # Apply filters
         date_from = serializer.validated_data.get('date_from')
