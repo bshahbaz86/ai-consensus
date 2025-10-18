@@ -52,9 +52,9 @@ const GoogleCallback: React.FC = () => {
 
           setStatus('success');
 
-          // Redirect to main app
+          // Redirect to main app with full page reload to refresh auth state
           setTimeout(() => {
-            navigate('/');
+            window.location.href = '/';
           }, 1000);
         } else {
           console.error('[OAuth] Backend returned error:', data.message);
