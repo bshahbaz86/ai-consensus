@@ -11,6 +11,7 @@ const GoogleCallback: React.FC = () => {
   useEffect(() => {
     const handleCallback = async () => {
       const code = searchParams.get('code');
+      const state = searchParams.get('state');
       const error = searchParams.get('error');
 
       if (error) {
@@ -24,9 +25,15 @@ const GoogleCallback: React.FC = () => {
         setErrorMessage('No authorization code received');
         return;
       }
+      if (!state) {
+        setStatus('error');
+        setErrorMessage('Missing OAuth state parameter');
+        return;
+      }
 
       try {
         console.log('[OAuth] Sending authorization code to backend:', code);
+        console.log('[OAuth] Using state parameter:', state);
 
         // Send authorization code to backend
         const response = await fetch('http://localhost:8000/api/v1/accounts/auth/google/callback/', {
@@ -35,7 +42,7 @@ const GoogleCallback: React.FC = () => {
             'Content-Type': 'application/json',
           },
           credentials: 'include',
-          body: JSON.stringify({ code }),
+          body: JSON.stringify({ code, state }),
         });
 
         console.log('[OAuth] Response status:', response.status);

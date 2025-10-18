@@ -2,6 +2,7 @@
 Tests for authentication flows covering passcode login and Google OAuth linkage.
 """
 from unittest.mock import patch
+from urllib.parse import urlparse, parse_qs
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -61,7 +62,14 @@ class GoogleOAuthLinkingTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        self.init_url = reverse('api_v1:accounts:google-oauth-init')
         self.callback_url = reverse('api_v1:accounts:google-oauth-callback')
+        init_response = self.client.get(self.init_url)
+        self.assertEqual(init_response.status_code, status.HTTP_200_OK)
+        authorization_url = init_response.data['data']['authorization_url']
+        parsed_query = parse_qs(urlparse(authorization_url).query)
+        self.state = parsed_query['state'][0]
+
         self.user = User.objects.create_user(
             username='linkeduser',
             email='linked@example.com',
@@ -85,7 +93,11 @@ class GoogleOAuthLinkingTests(TestCase):
                 'picture': 'http://example.com/avatar.png',
             }
 
-            response = self.client.post(self.callback_url, {'code': 'auth-code'}, format='json')
+            response = self.client.post(
+                self.callback_url,
+                {'code': 'auth-code', 'state': self.state},
+                format='json'
+            )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         data = response.data['data']
@@ -95,3 +107,19 @@ class GoogleOAuthLinkingTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.google_id, 'google-123')
         self.assertEqual(User.objects.filter(email='linked@example.com').count(), 1)
+
+    def test_google_oauth_callback_requires_state(self):
+        """Missing state should be rejected."""
+        response = self.client.post(self.callback_url, {'code': 'auth-code'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('state', response.data['message'].lower())
+
+    def test_google_oauth_callback_rejects_invalid_state(self):
+        """State mismatches are rejected."""
+        response = self.client.post(
+            self.callback_url,
+            {'code': 'auth-code', 'state': 'invalid-state'},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('state', response.data['message'].lower())

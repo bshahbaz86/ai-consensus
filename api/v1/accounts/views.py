@@ -2,7 +2,10 @@
 API v1 accounts views.
 """
 import json
+import secrets
 from pathlib import Path
+from urllib.parse import urlencode
+from datetime import timedelta
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
@@ -225,15 +228,25 @@ def google_oauth_init(request):
     Initiate Google OAuth flow.
     Returns the authorization URL for the frontend to redirect to.
     """
-    # Build authorization URL
-    authorization_url = (
-        f"https://accounts.google.com/o/oauth2/v2/auth?"
-        f"client_id={settings.SOCIALACCOUNT_PROVIDERS['google']['APP']['client_id']}&"
-        f"redirect_uri={settings.FRONTEND_URL}/auth/google/callback&"
-        f"response_type=code&"
-        f"scope=openid%20profile%20email&"
-        f"access_type=online"
-    )
+    if not request.session.session_key:
+        request.session.create()
+
+    state = secrets.token_urlsafe(32)
+    expiry_ts = (timezone.now() + timedelta(minutes=10)).timestamp()
+    request.session['google_oauth_state'] = state
+    request.session['google_oauth_state_expiry'] = expiry_ts
+    request.session.modified = True
+
+    params = {
+        'client_id': settings.SOCIALACCOUNT_PROVIDERS['google']['APP']['client_id'],
+        'redirect_uri': f"{settings.FRONTEND_URL}/auth/google/callback",
+        'response_type': 'code',
+        'scope': 'openid profile email',
+        'access_type': 'online',
+        'state': state,
+    }
+
+    authorization_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
     return success_response({
         'authorization_url': authorization_url
@@ -248,14 +261,51 @@ def google_oauth_callback(request):
     Handle Google OAuth callback.
     Exchange authorization code for tokens and create/login user.
 
-    Expected payload: { "code": "auth_code_from_google" }
+    Expected payload: { "code": "...", "state": "..." }
     """
     code = request.data.get('code')
+    state = request.data.get('state')
     if not code:
         return error_response(
             message="Authorization code required",
             status_code=status.HTTP_400_BAD_REQUEST
         )
+    if not state:
+        return error_response(
+            message="OAuth state parameter missing",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    expected_state = request.session.get('google_oauth_state')
+    expiry_ts = request.session.get('google_oauth_state_expiry')
+
+    if not expected_state or state != expected_state:
+        request.session.pop('google_oauth_state', None)
+        request.session.pop('google_oauth_state_expiry', None)
+        return error_response(
+            message="Invalid OAuth state",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    if expiry_ts is not None:
+        try:
+            if timezone.now().timestamp() > float(expiry_ts):
+                request.session.pop('google_oauth_state', None)
+                request.session.pop('google_oauth_state_expiry', None)
+                return error_response(
+                    message="OAuth state expired",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+        except (TypeError, ValueError):
+            request.session.pop('google_oauth_state', None)
+            request.session.pop('google_oauth_state_expiry', None)
+            return error_response(
+                message="OAuth state invalid",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+    request.session.pop('google_oauth_state', None)
+    request.session.pop('google_oauth_state_expiry', None)
 
     try:
         # Exchange code for tokens
