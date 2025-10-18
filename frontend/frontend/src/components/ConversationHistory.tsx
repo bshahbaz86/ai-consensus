@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Plus, MessageSquare, Clock, DollarSign,
-  Archive, MoreVertical, Trash2, Edit2, ExternalLink, Settings
+  Archive, MoreVertical, Trash2, Edit2, ExternalLink
 } from 'lucide-react';
 import { apiService, Conversation, SearchParams } from '../services/api';
-import ModelSelectionModal from './ModelSelectionModal';
 
 interface ConversationHistoryProps {
   currentConversationId?: string;
@@ -188,7 +187,6 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchParams, setSearchParams] = useState<SearchParams>({});
   const [error, setError] = useState<string | null>(null);
-  const [isModelModalOpen, setIsModelModalOpen] = useState(false);
 
   // Debounced search
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -295,13 +293,6 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
             <Plus size={16} />
             New Chat
           </button>
-          <button
-            onClick={() => setIsModelModalOpen(true)}
-            className="w-full flex items-center justify-center gap-2 bg-white text-blue-600 border border-blue-100 rounded-lg px-4 py-3 hover:bg-blue-50 transition-colors font-medium"
-          >
-            <Settings size={16} />
-            Select AI Services
-          </button>
         </div>
 
         {/* Search */}
@@ -368,12 +359,6 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
           </div>
         )}
       </div>
-
-      {/* Model Selection Modal */}
-      <ModelSelectionModal
-        isOpen={isModelModalOpen}
-        onClose={() => setIsModelModalOpen(false)}
-      />
     </div>
   );
 };

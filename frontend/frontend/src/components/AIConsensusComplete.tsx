@@ -3,6 +3,7 @@ import { X, Menu, Globe, Copy, Check, Star, LogOut, Settings } from 'lucide-reac
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
 import AccountSettings from './AccountSettings';
+import ModelSelectionModal from './ModelSelectionModal';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
 
 interface AIResponse {
@@ -75,6 +76,7 @@ const AIConsensusComplete: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [showModelSelection, setShowModelSelection] = useState(false);
 
   // Textarea ref for height reset
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -150,7 +152,7 @@ const AIConsensusComplete: React.FC = () => {
         await apiService.ensureCsrfToken();
 
         const newConversation = await apiService.createConversation({
-          title: 'New AI Consensus Chat',
+          title: 'New AIX Chat',
           agent_mode: 'standard'
         });
         setCurrentConversationId(newConversation.id);
@@ -270,7 +272,7 @@ const AIConsensusComplete: React.FC = () => {
   const handleNewConversation = async () => {
     try {
       const newConversation = await apiService.createConversation({
-        title: 'New AI Consensus Chat',
+        title: 'New AIX Chat',
         agent_mode: 'standard'
       });
       setCurrentConversationId(newConversation.id);
@@ -1121,6 +1123,14 @@ const AIConsensusComplete: React.FC = () => {
           </div>
           <div className="p-4 border-t border-gray-200 space-y-2">
             <button
+              onClick={() => setShowModelSelection(true)}
+              className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border-2 bg-white text-gray-700 border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+              title="Select AI Models"
+            >
+              <Settings size={16} />
+              Select AI Models
+            </button>
+            <button
               onClick={() => setShowAccountSettings(true)}
               className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border-2 bg-white text-gray-700 border-gray-300 hover:border-gray-400 hover:bg-gray-50"
               title="Account Settings"
@@ -1164,11 +1174,10 @@ const AIConsensusComplete: React.FC = () => {
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
               💬
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">AI Consensus</h1>
+            <h1 className="text-2xl font-bold text-gray-900">AIX</h1>
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">Select AI Services:</span>
             <div className="flex gap-2">
               {services.map(service => {
                 const isSelected = selectedServices.includes(service.id);
@@ -1913,15 +1922,15 @@ const AIConsensusComplete: React.FC = () => {
         {/* Welcome State */}
         {!loading && conversationHistory?.length === 0 && (
           <div className="text-center py-16 mb-20">
-            <div className="text-6xl mb-4">🤖</div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Welcome to AI Consensus</h2>
+            <div className="text-4xl mb-4">🤖</div>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Welcome to AIX</h2>
             <p className="text-gray-600 text-lg mb-6">
-              Get informed answers by comparing responses from multiple AI services simultaneously
+              Get informed answers by analyzing responses from multiple AI services simultaneously
             </p>
             <div className="text-sm text-gray-500 space-y-2">
-              <p>✨ Select multiple AI services for comparison</p>
-              <p>🌐 Enable web search for current information</p>
-              <p>🔍 Use AI Critique to compare responses</p>
+              <p>✨ Select multiple AI services</p>
+              <p>🌐 Enable deep web search for current information</p>
+              <p>🔍 Use AI analysis to compare, combine and cross-reference AI responses</p>
               <p>💬 Access chat history from the sidebar</p>
             </div>
           </div>
@@ -1939,7 +1948,7 @@ const AIConsensusComplete: React.FC = () => {
                     ? 'bg-green-100 text-green-600'
                     : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                 }`}
-                title={webSearchEnabled ? 'Web search enabled' : 'Click to enable web search'}
+                title={webSearchEnabled ? 'Deep web search enabled' : 'Click to enable deep web search'}
               >
                 <Globe size={18} />
               </button>
@@ -1983,7 +1992,7 @@ const AIConsensusComplete: React.FC = () => {
             {/* Status line */}
             <div className="mt-2 text-xs text-gray-500 text-center">
               Press Enter to send • {selectedServices.length} AI service{selectedServices.length !== 1 ? 's' : ''} selected
-              {webSearchEnabled && ' • Web search enabled'}
+              {webSearchEnabled && ' • Deep web search enabled'}
             </div>
           </div>
         </div>
@@ -1993,6 +2002,12 @@ const AIConsensusComplete: React.FC = () => {
       {showAccountSettings && (
         <AccountSettings onClose={() => setShowAccountSettings(false)} />
       )}
+
+      {/* Model Selection Modal */}
+      <ModelSelectionModal
+        isOpen={showModelSelection}
+        onClose={() => setShowModelSelection(false)}
+      />
     </div>
   );
 };

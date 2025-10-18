@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings } from 'lucide-react';
 import axios from 'axios';
+import './ModelSelectionModal.css';
 
 // Helper function to get CSRF token from cookies
 const getCsrfToken = (): string | null => {
@@ -184,41 +185,34 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Settings className="text-blue-400" size={24} />
-            <h2 className="text-xl font-semibold text-white">Select AI Models</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <X size={24} />
+    <div className="model-selection-overlay" onClick={onClose}>
+      <div className="model-selection-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="model-selection-header">
+          <h2>Select AI Models</h2>
+          <button onClick={onClose} className="close-btn">
+            <X size={20} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="model-selection-content">
           {/* Success Message */}
           {successMessage && (
-            <div className="bg-green-900 border border-green-700 text-green-100 px-4 py-3 rounded-lg">
-              {successMessage}
-            </div>
+            <div className="success-message">{successMessage}</div>
           )}
 
           {/* OpenAI Models */}
-          <div>
-            <h3 className="text-lg font-medium text-white mb-3 flex items-center gap-2">
-              <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">OpenAI</span>
-            </h3>
-            <div className="space-y-2">
+          <div className="model-section">
+            <div className="section-icon">
+              <Settings size={24} />
+            </div>
+            <h3>OpenAI</h3>
+            <p>Select your preferred OpenAI model</p>
+
+            <div className="model-options">
               {modelsByProvider.openai.map(model => (
                 <label
                   key={model.model_id}
-                  className="flex items-center gap-3 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg cursor-pointer transition-colors"
+                  className="model-option"
                 >
                   <input
                     type="radio"
@@ -226,24 +220,26 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
                     value={model.model_id}
                     checked={selectedModels.openai === model.model_id}
                     onChange={() => handleModelChange('openai', model.model_id)}
-                    className="w-4 h-4 text-blue-600"
                   />
-                  <span className="text-gray-100">{model.display_name}</span>
+                  <span className="model-label">{model.display_name}</span>
                 </label>
               ))}
             </div>
           </div>
 
           {/* Claude Models */}
-          <div>
-            <h3 className="text-lg font-medium text-white mb-3 flex items-center gap-2">
-              <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded">Claude</span>
-            </h3>
-            <div className="space-y-2">
+          <div className="model-section">
+            <div className="section-icon">
+              <Settings size={24} />
+            </div>
+            <h3>Claude</h3>
+            <p>Select your preferred Claude model</p>
+
+            <div className="model-options">
               {modelsByProvider.claude.map(model => (
                 <label
                   key={model.model_id}
-                  className="flex items-center gap-3 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg cursor-pointer transition-colors"
+                  className="model-option"
                 >
                   <input
                     type="radio"
@@ -251,24 +247,26 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
                     value={model.model_id}
                     checked={selectedModels.claude === model.model_id}
                     onChange={() => handleModelChange('claude', model.model_id)}
-                    className="w-4 h-4 text-blue-600"
                   />
-                  <span className="text-gray-100">{model.display_name}</span>
+                  <span className="model-label">{model.display_name}</span>
                 </label>
               ))}
             </div>
           </div>
 
           {/* Gemini Models */}
-          <div>
-            <h3 className="text-lg font-medium text-white mb-3 flex items-center gap-2">
-              <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded">Gemini</span>
-            </h3>
-            <div className="space-y-2">
+          <div className="model-section">
+            <div className="section-icon">
+              <Settings size={24} />
+            </div>
+            <h3>Gemini</h3>
+            <p>Select your preferred Gemini model</p>
+
+            <div className="model-options">
               {modelsByProvider.gemini.map(model => (
                 <label
                   key={model.model_id}
-                  className="flex items-center gap-3 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg cursor-pointer transition-colors"
+                  className="model-option"
                 >
                   <input
                     type="radio"
@@ -276,27 +274,18 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
                     value={model.model_id}
                     checked={selectedModels.gemini === model.model_id}
                     onChange={() => handleModelChange('gemini', model.model_id)}
-                    className="w-4 h-4 text-blue-600"
                   />
-                  <span className="text-gray-100">{model.display_name}</span>
+                  <span className="model-label">{model.display_name}</span>
                 </label>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-800 border-t border-gray-700 p-6 flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
-          >
-            Cancel
-          </button>
+          {/* Save Button */}
           <button
             onClick={handleSave}
             disabled={loading}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="save-btn"
           >
             {loading ? 'Saving...' : 'Save Preferences'}
           </button>
