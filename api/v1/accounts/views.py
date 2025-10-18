@@ -296,30 +296,47 @@ def google_oauth_callback(request):
 
         # Get or create user
         google_id = user_info.get('id')
-        email = user_info.get('email')
+        email = (user_info.get('email') or '').lower().strip()
 
-        user, created = User.objects.get_or_create(
-            google_id=google_id,
-            defaults={
-                'email': email,
-                'username': email.split('@')[0],
-                'display_name': user_info.get('name', ''),
-                'avatar': user_info.get('picture', ''),
-                'google_email': email,
-                'google_profile_picture': user_info.get('picture', ''),
-                'auth_method': 'google_oauth',
-                'is_active': True,
-            }
-        )
+        if not email:
+            return error_response(
+                message="Email address not provided by Google",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Update if existing user
-        if not created:
+        user = None
+        created = False
+
+        if google_id:
+            user = User.objects.filter(google_id=google_id).first()
+
+        if user is None:
+            user = User.objects.filter(email__iexact=email).first()
+
+        if user is None:
+            user = User.objects.create(
+                email=email,
+                username=User.generate_unique_username(email),
+                display_name=user_info.get('name', ''),
+                avatar=user_info.get('picture', ''),
+                google_email=email,
+                google_profile_picture=user_info.get('picture', ''),
+                google_id=google_id,
+                auth_method='google_oauth',
+                is_active=True,
+            )
+            created = True
+        else:
+            if google_id and user.google_id != google_id:
+                user.google_id = google_id
             user.google_email = email
             user.google_profile_picture = user_info.get('picture', '')
+            if not user.avatar:
+                user.avatar = user_info.get('picture', '')
             user.auth_method = 'google_oauth'
-            user.last_auth_at = timezone.now()
-        else:
-            user.last_auth_at = timezone.now()
+            user.is_active = True
+
+        user.last_auth_at = timezone.now()
 
         # Encrypt and save tokens
         user.encrypt_google_tokens(

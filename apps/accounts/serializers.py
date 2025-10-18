@@ -4,6 +4,7 @@ Serializers for user authentication and account management.
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from django.db import IntegrityError, transaction
 from .models import User, APIKey, EmailPasscode
 
 
@@ -166,14 +167,25 @@ class PasscodeVerifySerializer(serializers.Serializer):
         passcode_obj.mark_used()
 
         # Get or create user
-        user, created = User.objects.get_or_create(
-            email=email,
-            defaults={
-                'username': email.split('@')[0],
+        attempts = 0
+        while True:
+            defaults = {
+                'username': User.generate_unique_username(email),
                 'auth_method': 'temp_passcode',
                 'is_active': True,
             }
-        )
+            try:
+                with transaction.atomic():
+                    user, created = User.objects.get_or_create(
+                        email=email,
+                        defaults=defaults
+                    )
+                break
+            except IntegrityError:
+                attempts += 1
+                if attempts >= 5:
+                    raise serializers.ValidationError('Unable to create account at this time. Please try again.')
+                continue
 
         if not created and not user.is_active:
             raise serializers.ValidationError('User account is disabled.')

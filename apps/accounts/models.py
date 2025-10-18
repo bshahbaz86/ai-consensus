@@ -6,8 +6,10 @@ from django.db import models
 from django.utils import timezone
 from cryptography.fernet import Fernet
 from django.conf import settings
+from django.utils.crypto import get_random_string
 import base64
 import secrets
+import re
 from datetime import timedelta
 
 
@@ -116,6 +118,31 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.display_name or self.username
+
+    @classmethod
+    def generate_unique_username(cls, email: str) -> str:
+        """
+        Generate a username derived from the email local-part while
+        ensuring it is unique across all users.
+        """
+        if not email:
+            base_candidate = 'user'
+        else:
+            local_part = email.split('@')[0].lower()
+            normalized = re.sub(r'[^a-z0-9._-]', '', local_part)
+            base_candidate = normalized or 'user'
+
+        base_candidate = base_candidate[:150]
+        if not cls.objects.filter(username__iexact=base_candidate).exists():
+            return base_candidate
+
+        while True:
+            suffix = get_random_string(4, allowed_chars='abcdefghijklmnopqrstuvwxyz0123456789')
+            available_length = max(0, 150 - len(suffix) - 1)
+            trimmed_base = base_candidate[:available_length].rstrip('-_.')
+            candidate = f"{trimmed_base}-{suffix}" if trimmed_base else suffix
+            if not cls.objects.filter(username__iexact=candidate).exists():
+                return candidate
 
 
 class APIKey(models.Model):
