@@ -98,7 +98,7 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ onClose }) => {
                     {showPassword ? '👁️' : '👁️‍🗨️'}
                   </button>
                 </div>
-                <small>Password must be at least 8 characters</small>
+                <small>Use a password at least 15 letters long, or at least 8 characters long with both letters and numbers.</small>
               </div>
 
               <div className="form-group">
