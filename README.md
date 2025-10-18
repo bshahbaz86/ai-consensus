@@ -718,6 +718,30 @@ npm test -- --verbose --watchAll=false
 npm test -- --testNamePattern="renders without crashing" --watchAll=false
 ```
 
+### Continuous Integration (CI)
+
+The project uses GitHub Actions to automatically run all tests on every push and pull request to ensure code quality and prevent regressions.
+
+**CI Workflow** (`.github/workflows/ci.yml`):
+- ✅ Runs all backend Django tests (integration + security)
+- ✅ Runs all frontend React tests with coverage
+- ✅ Automatically triggered on pushes to `main`, `deep-search`, and `develop` branches
+- ✅ Runs on all pull requests targeting these branches
+- ✅ Provides detailed test summaries and failure reports
+
+**Viewing CI Results:**
+- Navigate to the "Actions" tab in your GitHub repository
+- Click on the latest workflow run to see detailed test results
+- Failed tests will prevent merging until fixed
+
+**Local Pre-Push Verification:**
+```bash
+# Run the same tests that CI runs
+./run_all_tests.sh
+```
+
+This ensures your changes will pass CI before pushing to GitHub.
+
 ### Code Quality
 ```bash
 # Backend linting
