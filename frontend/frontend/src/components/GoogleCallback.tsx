@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './GoogleCallback.css';
 
@@ -7,9 +7,15 @@ const GoogleCallback: React.FC = () => {
   const navigate = useNavigate();
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [errorMessage, setErrorMessage] = useState('');
+  const hasAttemptedCallback = useRef(false);
 
   useEffect(() => {
     const handleCallback = async () => {
+      // Prevent duplicate calls (React StrictMode runs effects twice in development)
+      if (hasAttemptedCallback.current) {
+        return;
+      }
+      hasAttemptedCallback.current = true;
       const code = searchParams.get('code');
       const state = searchParams.get('state');
       const error = searchParams.get('error');

@@ -37,8 +37,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         # Optimize queries based on action
         if self.action == 'list':
-            # For list view, prefetch related data for performance
-            queryset = queryset.prefetch_related(
+            # For list view, only show conversations with messages and prefetch related data
+            queryset = queryset.filter(total_messages__gt=0).prefetch_related(
                 Prefetch('messages', queryset=Message.objects.select_related().order_by('-timestamp'))
             ).select_related('user')
         elif self.action == 'retrieve':
@@ -119,7 +119,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         archived = serializer.validated_data.get('archived')
         if archived is not None:
-            queryset = queryset.filter(is_active=not archived)
+            queryset = queryset.filter(is_archived=archived)
 
         # Apply ordering
         ordering = serializer.validated_data.get('ordering', '-updated_at')
@@ -213,6 +213,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['timestamp']
     ordering = ['timestamp']
+    pagination_class = None  # Messages within a conversation are loaded all at once
 
     def get_queryset(self):
         """Return messages for a specific conversation owned by the authenticated user."""

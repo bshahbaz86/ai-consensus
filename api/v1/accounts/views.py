@@ -263,8 +263,16 @@ def google_oauth_callback(request):
 
     Expected payload: { "code": "...", "state": "..." }
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     code = request.data.get('code')
     state = request.data.get('state')
+
+    logger.info(f'[OAuth Callback] Received state: {state}')
+    logger.info(f'[OAuth Callback] Session key: {request.session.session_key}')
+    logger.info(f'[OAuth Callback] Session data: {dict(request.session.items())}')
+
     if not code:
         return error_response(
             message="Authorization code required",
@@ -278,6 +286,9 @@ def google_oauth_callback(request):
 
     expected_state = request.session.get('google_oauth_state')
     expiry_ts = request.session.get('google_oauth_state_expiry')
+
+    logger.info(f'[OAuth Callback] Expected state: {expected_state}')
+    logger.info(f'[OAuth Callback] States match: {state == expected_state}')
 
     if not expected_state or state != expected_state:
         request.session.pop('google_oauth_state', None)
