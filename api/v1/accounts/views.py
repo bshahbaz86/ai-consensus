@@ -53,7 +53,7 @@ class RegisterView(APIView):
             )
             
             # Log the user in
-            login(request, user)
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
             
             return success_response({
                 'user': UserProfileSerializer(user).data,

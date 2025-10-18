@@ -43,6 +43,40 @@ class PasscodeAuthenticationTests(TestCase):
         self.assertTrue(user.username.lower().startswith('alice'))
 
 
+class RegistrationPasswordTests(TestCase):
+    """Ensure registration correctly flags password availability."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.register_url = reverse('api_v1:accounts:register')
+        self.password_login_url = reverse('api_v1:accounts:password-login')
+
+    def test_registration_sets_has_permanent_password_and_allows_login(self):
+        """Users created via registration should support password login."""
+        payload = {
+            'email': 'newuser@example.com',
+            'username': 'newuser',
+            'display_name': 'New User',
+            'password': 'StrongPass!234',
+            'password_confirm': 'StrongPass!234',
+        }
+
+        response = self.client.post(self.register_url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        user = User.objects.get(email='newuser@example.com')
+        self.assertTrue(user.has_permanent_password)
+
+        login_client = APIClient()
+        login_response = login_client.post(
+            self.password_login_url,
+            {'email': 'newuser@example.com', 'password': 'StrongPass!234'},
+            format='json'
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK, login_response.data)
+        self.assertTrue(login_response.data['success'])
+
+
 @override_settings(
     SOCIALACCOUNT_PROVIDERS={
         'google': {

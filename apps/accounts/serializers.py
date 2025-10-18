@@ -30,7 +30,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             username=validated_data['username'],
             display_name=validated_data.get('display_name', ''),
-            password=validated_data['password']
+            password=validated_data['password'],
+            has_permanent_password=True
         )
         return user
 
