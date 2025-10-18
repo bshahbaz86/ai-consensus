@@ -2,8 +2,11 @@
  * App.test.tsx
  * Tests for the main App component including rendering, navigation, and authentication
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import App from './App';
+
+// Mock react-router-dom (uses manual mock from __mocks__/react-router-dom.tsx)
+jest.mock('react-router-dom');
 
 // Mock the AIConsensusComplete component to isolate App tests
 jest.mock('./components/AIConsensusComplete', () => {
@@ -23,48 +26,82 @@ jest.mock('./components/AIConsensusComplete', () => {
   };
 });
 
+// Mock LandingPage component
+jest.mock('./components/LandingPage', () => {
+  return function MockLandingPage() {
+    return <div data-testid="landing-page">Landing Page</div>;
+  };
+});
+
+// Mock GoogleCallback component
+jest.mock('./components/GoogleCallback', () => {
+  return function MockGoogleCallback() {
+    return <div data-testid="google-callback">Google Callback</div>;
+  };
+});
+
 describe('App', () => {
   beforeEach(() => {
     // Clear all mocks before each test
     jest.clearAllMocks();
+    // Set up authentication to show AIConsensusComplete instead of landing page
+    localStorage.setItem('auth_token', 'test-token');
+    localStorage.setItem('user', JSON.stringify({ id: 1, email: 'test@example.com' }));
+  });
+
+  afterEach(() => {
+    // Clean up localStorage
+    localStorage.clear();
   });
 
   describe('Rendering', () => {
-    test('renders without crashing', () => {
+    test('renders without crashing', async () => {
       render(<App />);
-      expect(screen.getByTestId('ai-consensus-complete')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('ai-consensus-complete')).toBeInTheDocument();
+      });
     });
 
-    test('renders the main heading', () => {
+    test('renders the main heading', async () => {
       render(<App />);
-      expect(screen.getByText('AI Consensus')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('AI Consensus')).toBeInTheDocument();
+      });
     });
 
-    test('renders AI service selection buttons', () => {
+    test('renders AI service selection buttons', async () => {
       render(<App />);
-      expect(screen.getByText('Claude')).toBeInTheDocument();
-      expect(screen.getByText('OpenAI')).toBeInTheDocument();
-      expect(screen.getByText('Gemini')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Claude')).toBeInTheDocument();
+        expect(screen.getByText('OpenAI')).toBeInTheDocument();
+        expect(screen.getByText('Gemini')).toBeInTheDocument();
+      });
     });
 
-    test('renders the input area for questions', () => {
+    test('renders the input area for questions', async () => {
       render(<App />);
-      const textarea = screen.getByPlaceholderText(/ask a question to multiple ai services/i);
-      expect(textarea).toBeInTheDocument();
+      await waitFor(() => {
+        const textarea = screen.getByPlaceholderText(/ask a question to multiple ai services/i);
+        expect(textarea).toBeInTheDocument();
+      });
     });
 
-    test('renders the send button', () => {
+    test('renders the send button', async () => {
       render(<App />);
-      const sendButton = screen.getByRole('button', { name: /send/i });
-      expect(sendButton).toBeInTheDocument();
+      await waitFor(() => {
+        const sendButton = screen.getByRole('button', { name: /send/i });
+        expect(sendButton).toBeInTheDocument();
+      });
     });
   });
 
   describe('Component Integration', () => {
-    test('renders AIConsensusComplete component', () => {
+    test('renders AIConsensusComplete component', async () => {
       render(<App />);
-      const consensusComponent = screen.getByTestId('ai-consensus-complete');
-      expect(consensusComponent).toBeInTheDocument();
+      await waitFor(() => {
+        const consensusComponent = screen.getByTestId('ai-consensus-complete');
+        expect(consensusComponent).toBeInTheDocument();
+      });
     });
 
     test('applies correct CSS class to App container', () => {
@@ -75,35 +112,51 @@ describe('App', () => {
   });
 
   describe('Layout Structure', () => {
-    test('maintains proper component hierarchy', () => {
+    test('maintains proper component hierarchy', async () => {
       const { container } = render(<App />);
 
       // Check that App div contains the consensus component
-      const appDiv = container.querySelector('.App');
-      expect(appDiv).toContainElement(screen.getByTestId('ai-consensus-complete'));
+      await waitFor(() => {
+        const appDiv = container.querySelector('.App');
+        expect(appDiv).toContainElement(screen.getByTestId('ai-consensus-complete'));
+      });
     });
   });
 });
 
 describe('App - Accessibility', () => {
-  test('has proper document structure', () => {
+  beforeEach(() => {
+    // Set up authentication
+    localStorage.setItem('auth_token', 'test-token');
+    localStorage.setItem('user', JSON.stringify({ id: 1, email: 'test@example.com' }));
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  test('has proper document structure', async () => {
     render(<App />);
 
     // Check for heading hierarchy
-    const heading = screen.getByRole('heading', { name: /ai consensus/i });
-    expect(heading).toBeInTheDocument();
+    await waitFor(() => {
+      const heading = screen.getByRole('heading', { name: /ai consensus/i });
+      expect(heading).toBeInTheDocument();
+    });
   });
 
-  test('form elements are accessible', () => {
+  test('form elements are accessible', async () => {
     render(<App />);
 
     // Textarea should be accessible
-    const textarea = screen.getByPlaceholderText(/ask a question/i);
-    expect(textarea).toBeInTheDocument();
+    await waitFor(() => {
+      const textarea = screen.getByPlaceholderText(/ask a question/i);
+      expect(textarea).toBeInTheDocument();
 
-    // Buttons should be accessible
-    const buttons = screen.getAllByRole('button');
-    expect(buttons.length).toBeGreaterThan(0);
+      // Buttons should be accessible
+      const buttons = screen.getAllByRole('button');
+      expect(buttons.length).toBeGreaterThan(0);
+    });
   });
 });
 

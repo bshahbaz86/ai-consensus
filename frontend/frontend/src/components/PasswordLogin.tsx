@@ -110,8 +110,7 @@ const PasswordLogin: React.FC<PasswordLoginProps> = ({ onBack }) => {
 
         <div className="password-footer">
           <p>
-            Don't have a password yet? Sign in with Google or email, then set a password in your
-            account settings.
+            Don't have a password yet? Please use Google OAuth or email passcode to sign in.
           </p>
         </div>
       </div>

@@ -364,7 +364,7 @@ describe('ApiService', () => {
         expect.any(String),
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: 'Bearer bearer-token-123',
+            Authorization: 'Token bearer-token-123',
           }),
         })
       );

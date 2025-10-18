@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Menu, Globe, Copy, Check, Star } from 'lucide-react';
+import { X, Menu, Globe, Copy, Check, Star, LogOut } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
@@ -456,10 +456,10 @@ const AIConsensusComplete: React.FC = () => {
     const currentQuestion = question;
 
     // Archive current responses as a conversation exchange if we have any
-    if (responses.length > 0 && conversationHistory.length > 0) {
+    if (responses?.length > 0 && conversationHistory?.length > 0) {
       // Find the last user message in the conversation history
-      const lastUserMessage = conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0];
-      const newExchangeIndex = conversationExchanges.length;
+      const lastUserMessage = conversationHistory?.filter(msg => msg.role === 'user').slice(-1)[0];
+      const newExchangeIndex = conversationExchanges?.length || 0;
 
       // Archive the responses along with any analysis results
       setConversationExchanges(prev => [...prev, {
@@ -473,7 +473,7 @@ const AIConsensusComplete: React.FC = () => {
       }]);
 
       // Save current cross-reflection results to previous results for the new exchange index
-      if (crossReflectionResults.length > 0) {
+      if (crossReflectionResults?.length > 0) {
         setPreviousCrossReflectionResults(prev => ({...prev, [`${newExchangeIndex}`]: crossReflectionResults}));
       }
 
@@ -510,7 +510,7 @@ const AIConsensusComplete: React.FC = () => {
       setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
 
       // Trigger conversation list refresh after first message (so it appears in sidebar)
-      if (conversationHistory.length === 0) {
+      if (conversationHistory?.length === 0) {
         setConversationRefreshTrigger(prev => prev + 1);
       }
 
@@ -1006,6 +1006,20 @@ const AIConsensusComplete: React.FC = () => {
     }
   };
 
+  const handleSignOut = async () => {
+    if (window.confirm('Are you sure you want to sign out?')) {
+      try {
+        await apiService.logout();
+        // Redirect to login page
+        window.location.href = '/login';
+      } catch (error) {
+        console.error('Sign out error:', error);
+        // Even if API call fails, still redirect to login
+        window.location.href = '/login';
+      }
+    }
+  };
+
   const togglePreviousExpanded = (exchangeIndex: number, responseIndex: number) => {
     const key = `${exchangeIndex}`;
     setPreviousExchangesExpanded(prev => {
@@ -1154,6 +1168,14 @@ const AIConsensusComplete: React.FC = () => {
                 );
               })}
             </div>
+            <button
+              onClick={handleSignOut}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 border-2 bg-white text-red-600 border-red-300 hover:border-red-400 hover:bg-red-50"
+              title="Sign Out"
+            >
+              <LogOut size={16} />
+              Sign Out
+            </button>
           </div>
         </div>
 
@@ -1513,10 +1535,10 @@ const AIConsensusComplete: React.FC = () => {
         })}
 
         {/* Current User Query Display */}
-        {conversationHistory.length > 0 && (
+        {conversationHistory?.length > 0 && (
           <div className="max-w-4xl mx-auto mb-8">
             {conversationHistory
-              .filter(message => message.role === 'user')
+              ?.filter(message => message.role === 'user')
               .slice(-1)
               .map((message, index) => (
                 <div key={index} className="flex justify-center">
@@ -1530,7 +1552,7 @@ const AIConsensusComplete: React.FC = () => {
         )}
 
         {/* AI Responses - Only show current responses, not in history */}
-        {responses.length > 0 && (
+        {responses?.length > 0 && (
           <div className="space-y-6 max-w-4xl mx-auto">
             {responses.map((response, index) => (
               <div key={index} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -1746,7 +1768,7 @@ const AIConsensusComplete: React.FC = () => {
         )}
 
         {/* Cross-Reflection Results */}
-        {crossReflectionResults.length > 0 && (
+        {crossReflectionResults?.length > 0 && (
           <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-3">
               <h3 className="font-semibold text-green-900">AI Cross-Reflection</h3>
@@ -1877,7 +1899,7 @@ const AIConsensusComplete: React.FC = () => {
         )}
 
         {/* Welcome State */}
-        {!loading && conversationHistory.length === 0 && (
+        {!loading && conversationHistory?.length === 0 && (
           <div className="text-center py-16 mb-20">
             <div className="text-6xl mb-4">🤖</div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">Welcome to AI Consensus</h2>

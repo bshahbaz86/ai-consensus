@@ -237,6 +237,22 @@ class ApiService {
     return response.results;
   }
 
+  // Authentication
+  async logout(): Promise<void> {
+    try {
+      await this.request('/accounts/logout/', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+      // Continue with local cleanup even if API call fails
+    } finally {
+      // Clear local auth data
+      this.clearAuthToken();
+      localStorage.removeItem('user');
+    }
+  }
+
   // Utility methods
   setAuthToken(token: string) {
     this.token = token;
