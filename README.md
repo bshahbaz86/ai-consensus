@@ -257,7 +257,7 @@ graph TB
    ```bash
    cp .env.example .env
    ```
-   
+
    Edit `.env` with your API keys:
    ```env
    # AI Service API Keys (get these from respective providers)
@@ -267,6 +267,11 @@ graph TB
 
    # Reka API Key (for web search functionality)
    REKA_API_KEY=your-reka-api-key
+
+   # Google OAuth Configuration (see Google OAuth Setup section below)
+   GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+   FRONTEND_URL=http://localhost:3000
 
    # Django Configuration
    SECRET_KEY=your-secret-key-here
@@ -320,6 +325,82 @@ graph TB
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8001
+
+## Google OAuth Setup
+
+The application supports Google OAuth for seamless authentication. Follow these steps to configure Google OAuth:
+
+### 1. Create a Google Cloud Project
+
+1. Visit [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Navigate to **APIs & Services** → **Credentials**
+
+### 2. Configure OAuth Consent Screen
+
+1. Go to **OAuth consent screen** in the left sidebar
+2. Select **External** user type (or Internal for Google Workspace)
+3. Fill in required information:
+   - **App name**: AI Consensus
+   - **User support email**: Your email
+   - **Developer contact email**: Your email
+4. Add scopes: `email`, `profile`, `openid`
+5. Add test users (your email) for development
+6. Save and continue
+
+### 3. Create OAuth 2.0 Client ID
+
+1. Go to **Credentials** → **Create Credentials** → **OAuth client ID**
+2. Select **Web application**
+3. Configure settings:
+   - **Name**: AI Consensus Web Client
+   - **Authorized JavaScript origins**: `http://localhost:3000`
+   - **Authorized redirect URIs**: `http://localhost:3000/auth/google/callback`
+4. Click **Create**
+5. Copy the **Client ID** and **Client Secret**
+
+### 4. Update Environment Variables
+
+Add the credentials to your `.env` file:
+
+```env
+GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+FRONTEND_URL=http://localhost:3000
+```
+
+Also create `frontend/frontend/.env`:
+
+```env
+REACT_APP_API_URL=http://localhost:8000
+REACT_APP_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
+
+### 5. Authentication Flow
+
+The application implements a multi-path authentication system:
+
+1. **Google OAuth** (Primary): One-click sign-in with Google account
+2. **Email Passcode** (Coming Soon): Temporary passcode sent to email
+3. **Permanent Password** (Coming Soon): Set password after Google sign-in
+
+**Current Implementation:**
+- ✅ Google OAuth end-to-end flow
+- ✅ Landing page with authentication options
+- ✅ OAuth callback handler
+- ✅ Token-based session management
+- ✅ Authentication gate protecting main app
+
+### Testing Google OAuth
+
+1. Start both backend and frontend servers
+2. Visit `http://localhost:3000`
+3. You'll be redirected to `/login` (landing page)
+4. Click "Continue with Google"
+5. Authenticate with your Google account
+6. You'll be redirected back and logged in
+
+**Note**: Make sure you've added your email as a test user in Google Cloud Console during development.
 
 ## Security Configuration
 
@@ -393,8 +474,9 @@ These endpoints should only be enabled in development environments to prevent un
 - **Claude**: Get from https://console.anthropic.com/
 - **Gemini**: Get from https://ai.google.dev/
 - **Reka**: Get from https://platform.reka.ai/ (for web search functionality)
+- **Google OAuth**: Get from https://console.cloud.google.com/ (see Google OAuth Setup section)
 
-**Note**: The app will work with just one AI API key, but you'll get the best experience with all three. Reka API key is optional but enables location-aware web search functionality.
+**Note**: The app will work with just one AI API key, but you'll get the best experience with all three. Reka API key is optional but enables location-aware web search functionality. Google OAuth credentials are required for authentication.
 
 ## API Endpoints
 
@@ -408,9 +490,11 @@ These endpoints should only be enabled in development environments to prevent un
 - `POST /api/v1/critique/compare/` - AI-powered response comparison and critique
 
 ### Authentication
-- `POST /api/v1/auth/register/` - User registration
-- `POST /api/v1/auth/login/` - User login
-- `POST /api/v1/auth/logout/` - User logout
+- `POST /api/v1/accounts/register/` - User registration
+- `POST /api/v1/accounts/login/` - User login
+- `POST /api/v1/accounts/logout/` - User logout
+- `GET /api/v1/accounts/auth/google/init/` - Initiate Google OAuth flow
+- `POST /api/v1/accounts/auth/google/callback/` - Handle Google OAuth callback
 
 ## Usage Examples
 
@@ -633,6 +717,30 @@ npm test -- --verbose --watchAll=false
 # Debug specific test
 npm test -- --testNamePattern="renders without crashing" --watchAll=false
 ```
+
+### Continuous Integration (CI)
+
+The project uses GitHub Actions to automatically run all tests on every push and pull request to ensure code quality and prevent regressions.
+
+**CI Workflow** (`.github/workflows/ci.yml`):
+- ✅ Runs all backend Django tests (integration + security)
+- ✅ Runs all frontend React tests with coverage
+- ✅ Automatically triggered on pushes to `main`, `deep-search`, and `develop` branches
+- ✅ Runs on all pull requests targeting these branches
+- ✅ Provides detailed test summaries and failure reports
+
+**Viewing CI Results:**
+- Navigate to the "Actions" tab in your GitHub repository
+- Click on the latest workflow run to see detailed test results
+- Failed tests will prevent merging until fixed
+
+**Local Pre-Push Verification:**
+```bash
+# Run the same tests that CI runs
+./run_all_tests.sh
+```
+
+This ensures your changes will pass CI before pushing to GitHub.
 
 ### Code Quality
 ```bash

@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Menu, Globe, Copy, Check, Star } from 'lucide-react';
+import { X, Menu, Globe, Copy, Check, Star, LogOut, Settings } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
+import AccountSettings from './AccountSettings';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
 
 interface AIResponse {
@@ -33,6 +34,27 @@ const getCsrfToken = (): string | null => {
   return null;
 };
 
+// Helper function to get headers with both CSRF and Authorization tokens
+const getAuthHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add CSRF token
+  const csrfToken = getCsrfToken();
+  if (csrfToken) {
+    headers['X-CSRFToken'] = csrfToken;
+  }
+
+  // Add Authorization token (DRF TokenAuthentication format)
+  const authToken = localStorage.getItem('auth_token');
+  if (authToken) {
+    headers['Authorization'] = `Token ${authToken}`;
+  }
+
+  return headers;
+};
+
 const AIConsensusComplete: React.FC = () => {
   const [question, setQuestion] = useState('');
   const [responses, setResponses] = useState<AIResponse[]>([]);
@@ -52,6 +74,7 @@ const AIConsensusComplete: React.FC = () => {
   // Chat history sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   // Textarea ref for height reset
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -304,13 +327,7 @@ const AIConsensusComplete: React.FC = () => {
 
     try {
       // Using direct fetch since we don't have a messages endpoint in apiService yet
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch(`http://localhost:8000/api/v1/conversations/${currentConversationId}/messages/`, {
         method: 'POST',
@@ -441,10 +458,10 @@ const AIConsensusComplete: React.FC = () => {
     const currentQuestion = question;
 
     // Archive current responses as a conversation exchange if we have any
-    if (responses.length > 0 && conversationHistory.length > 0) {
+    if (responses?.length > 0 && conversationHistory?.length > 0) {
       // Find the last user message in the conversation history
-      const lastUserMessage = conversationHistory.filter(msg => msg.role === 'user').slice(-1)[0];
-      const newExchangeIndex = conversationExchanges.length;
+      const lastUserMessage = conversationHistory?.filter(msg => msg.role === 'user').slice(-1)[0];
+      const newExchangeIndex = conversationExchanges?.length || 0;
 
       // Archive the responses along with any analysis results
       setConversationExchanges(prev => [...prev, {
@@ -458,7 +475,7 @@ const AIConsensusComplete: React.FC = () => {
       }]);
 
       // Save current cross-reflection results to previous results for the new exchange index
-      if (crossReflectionResults.length > 0) {
+      if (crossReflectionResults?.length > 0) {
         setPreviousCrossReflectionResults(prev => ({...prev, [`${newExchangeIndex}`]: crossReflectionResults}));
       }
 
@@ -495,7 +512,7 @@ const AIConsensusComplete: React.FC = () => {
       setConversationHistory(prev => [...prev, { role: 'user', content: currentQuestion }]);
 
       // Trigger conversation list refresh after first message (so it appears in sidebar)
-      if (conversationHistory.length === 0) {
+      if (conversationHistory?.length === 0) {
         setConversationRefreshTrigger(prev => prev + 1);
       }
 
@@ -531,15 +548,10 @@ const AIConsensusComplete: React.FC = () => {
         chat_history: requestBody.chat_history ? 'present' : 'empty'
       });
 
+      const headers = getAuthHeaders();
       const csrfToken = getCsrfToken();
       console.log('[FRONTEND] CSRF Token:', csrfToken ? 'found' : 'NOT FOUND');
       console.log('[FRONTEND] All cookies:', document.cookie);
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
 
       // Keep searchingInternet true if web search is enabled (backend will do web search first)
       // Otherwise, show AI thinking indicator with loading state
@@ -649,13 +661,7 @@ const AIConsensusComplete: React.FC = () => {
 
       console.log('[CRITIQUE DEBUG] Request body:', JSON.stringify(requestBody, null, 2));
 
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/critique/', {
         method: 'POST',
@@ -696,13 +702,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingSynthesis(true);
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/synthesis/', {
         method: 'POST',
@@ -751,13 +751,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingCrossReflection(true);
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/cross-reflect/', {
         method: 'POST',
@@ -824,13 +818,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousCritique(prev => ({...prev, [exchangeKey]: true}));
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/critique/', {
         method: 'POST',
@@ -883,13 +871,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousSynthesis(prev => ({...prev, [exchangeKey]: true}));
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/synthesis/', {
         method: 'POST',
@@ -942,13 +924,7 @@ const AIConsensusComplete: React.FC = () => {
     setLoadingPreviousCrossReflection(prev => ({...prev, [exchangeKey]: true}));
 
     try {
-      const csrfToken = getCsrfToken();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (csrfToken) {
-        headers['X-CSRFToken'] = csrfToken;
-      }
+      const headers = getAuthHeaders();
 
       const response = await fetch('http://localhost:8000/api/v1/consensus/cross-reflect/', {
         method: 'POST',
@@ -1029,6 +1005,20 @@ const AIConsensusComplete: React.FC = () => {
     } catch (err) {
       console.error('Failed to copy text:', err);
       alert('Failed to copy to clipboard');
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (window.confirm('Are you sure you want to sign out?')) {
+      try {
+        await apiService.logout();
+        // Redirect to login page
+        window.location.href = '/login';
+      } catch (error) {
+        console.error('Sign out error:', error);
+        // Even if API call fails, still redirect to login
+        window.location.href = '/login';
+      }
     }
   };
 
@@ -1128,6 +1118,24 @@ const AIConsensusComplete: React.FC = () => {
               className="h-full border-r-0"
               refreshTrigger={conversationRefreshTrigger}
             />
+          </div>
+          <div className="p-4 border-t border-gray-200 space-y-2">
+            <button
+              onClick={() => setShowAccountSettings(true)}
+              className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border-2 bg-white text-gray-700 border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+              title="Account Settings"
+            >
+              <Settings size={16} />
+              Account Settings
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border-2 bg-white text-red-600 border-red-300 hover:border-red-400 hover:bg-red-50"
+              title="Sign Out"
+            >
+              <LogOut size={16} />
+              Sign Out
+            </button>
           </div>
         </div>
       </div>
@@ -1539,10 +1547,10 @@ const AIConsensusComplete: React.FC = () => {
         })}
 
         {/* Current User Query Display */}
-        {conversationHistory.length > 0 && (
+        {conversationHistory?.length > 0 && (
           <div className="max-w-4xl mx-auto mb-8">
             {conversationHistory
-              .filter(message => message.role === 'user')
+              ?.filter(message => message.role === 'user')
               .slice(-1)
               .map((message, index) => (
                 <div key={index} className="flex justify-center">
@@ -1556,7 +1564,7 @@ const AIConsensusComplete: React.FC = () => {
         )}
 
         {/* AI Responses - Only show current responses, not in history */}
-        {responses.length > 0 && (
+        {responses?.length > 0 && (
           <div className="space-y-6 max-w-4xl mx-auto">
             {responses.map((response, index) => (
               <div key={index} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -1772,7 +1780,7 @@ const AIConsensusComplete: React.FC = () => {
         )}
 
         {/* Cross-Reflection Results */}
-        {crossReflectionResults.length > 0 && (
+        {crossReflectionResults?.length > 0 && (
           <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-3">
               <h3 className="font-semibold text-green-900">AI Cross-Reflection</h3>
@@ -1903,7 +1911,7 @@ const AIConsensusComplete: React.FC = () => {
         )}
 
         {/* Welcome State */}
-        {!loading && conversationHistory.length === 0 && (
+        {!loading && conversationHistory?.length === 0 && (
           <div className="text-center py-16 mb-20">
             <div className="text-6xl mb-4">🤖</div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">Welcome to AI Consensus</h2>
@@ -1980,6 +1988,11 @@ const AIConsensusComplete: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Account Settings Modal */}
+      {showAccountSettings && (
+        <AccountSettings onClose={() => setShowAccountSettings(false)} />
+      )}
     </div>
   );
 };

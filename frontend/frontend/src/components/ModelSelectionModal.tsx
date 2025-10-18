@@ -114,7 +114,7 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
 
   const fetchPreferences = async () => {
     try {
-      const response = await axios.get<ApiResponse>('http://localhost:8000/api/v1/auth/model-preferences/', {
+      const response = await axios.get<ApiResponse>('http://localhost:8000/api/v1/accounts/model-preferences/', {
         withCredentials: true
       });
 
@@ -145,7 +145,7 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
     try {
       const csrfToken = getCsrfToken();
       const response = await axios.put<ApiResponse>(
-        'http://localhost:8000/api/v1/auth/model-preferences/',
+        'http://localhost:8000/api/v1/accounts/model-preferences/',
         {
           openai_model: selectedModels.openai,
           claude_model: selectedModels.claude,

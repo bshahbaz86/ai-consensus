@@ -3,9 +3,14 @@ User account models for ChatAI.
 """
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 from cryptography.fernet import Fernet
 from django.conf import settings
+from django.utils.crypto import get_random_string
 import base64
+import secrets
+import re
+from datetime import timedelta
 
 
 class User(AbstractUser):
@@ -18,7 +23,28 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-    
+
+    # Google OAuth fields
+    google_id = models.CharField(max_length=255, blank=True, null=True, unique=True, db_index=True)
+    google_email = models.EmailField(blank=True, null=True)
+    google_profile_picture = models.URLField(max_length=500, blank=True, null=True)
+    google_access_token = models.TextField(blank=True, null=True)  # Will be encrypted
+    google_refresh_token = models.TextField(blank=True, null=True)  # Will be encrypted
+
+    # Authentication tracking
+    auth_method = models.CharField(
+        max_length=50,
+        choices=[
+            ('google_oauth', 'Google OAuth'),
+            ('temp_passcode', 'Temporary Passcode'),
+            ('permanent_password', 'Permanent Password'),
+        ],
+        blank=True,
+        null=True
+    )
+    has_permanent_password = models.BooleanField(default=False)
+    last_auth_at = models.DateTimeField(null=True, blank=True)
+
     # User preferences
     preferred_ai_service = models.CharField(
         max_length=50,
@@ -46,6 +72,41 @@ class User(AbstractUser):
         default='models/gemini-flash-latest',
         blank=True
     )
+
+    def _get_cipher(self):
+        """Get Fernet cipher for token encryption (reuse existing pattern)."""
+        key = base64.urlsafe_b64encode(settings.ENCRYPTION_KEY.encode()[:32])
+        return Fernet(key)
+
+    def encrypt_google_tokens(self, access_token, refresh_token):
+        """Encrypt Google OAuth tokens using existing Fernet pattern."""
+        cipher = self._get_cipher()
+
+        if access_token:
+            encrypted = cipher.encrypt(access_token.encode())
+            self.google_access_token = base64.urlsafe_b64encode(encrypted).decode()
+        if refresh_token:
+            encrypted = cipher.encrypt(refresh_token.encode())
+            self.google_refresh_token = base64.urlsafe_b64encode(encrypted).decode()
+
+    def decrypt_google_tokens(self):
+        """Decrypt Google OAuth tokens."""
+        cipher = self._get_cipher()
+
+        access_token = None
+        refresh_token = None
+
+        try:
+            if self.google_access_token:
+                encrypted = base64.urlsafe_b64decode(self.google_access_token.encode())
+                access_token = cipher.decrypt(encrypted).decode()
+            if self.google_refresh_token:
+                encrypted = base64.urlsafe_b64decode(self.google_refresh_token.encode())
+                refresh_token = cipher.decrypt(encrypted).decode()
+        except Exception:
+            pass  # Return None if decryption fails
+
+        return access_token, refresh_token
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
@@ -57,6 +118,31 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.display_name or self.username
+
+    @classmethod
+    def generate_unique_username(cls, email: str) -> str:
+        """
+        Generate a username derived from the email local-part while
+        ensuring it is unique across all users.
+        """
+        if not email:
+            base_candidate = 'user'
+        else:
+            local_part = email.split('@')[0].lower()
+            normalized = re.sub(r'[^a-z0-9._-]', '', local_part)
+            base_candidate = normalized or 'user'
+
+        base_candidate = base_candidate[:150]
+        if not cls.objects.filter(username__iexact=base_candidate).exists():
+            return base_candidate
+
+        while True:
+            suffix = get_random_string(4, allowed_chars='abcdefghijklmnopqrstuvwxyz0123456789')
+            available_length = max(0, 150 - len(suffix) - 1)
+            trimmed_base = base_candidate[:available_length].rstrip('-_.')
+            candidate = f"{trimmed_base}-{suffix}" if trimmed_base else suffix
+            if not cls.objects.filter(username__iexact=candidate).exists():
+                return candidate
 
 
 class APIKey(models.Model):
@@ -129,11 +215,72 @@ class UserSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-    
+
     class Meta:
         db_table = 'user_sessions'
         verbose_name = 'User Session'
         verbose_name_plural = 'User Sessions'
-    
+
     def __str__(self):
         return f"{self.user.username} - {self.session_key[:10]}..."
+
+
+class EmailPasscode(models.Model):
+    """
+    Temporary passcode for email-based authentication.
+    Passcodes expire after 15 minutes.
+    """
+    email = models.EmailField(db_index=True)
+    passcode = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'email_passcodes'
+        verbose_name = 'Email Passcode'
+        verbose_name_plural = 'Email Passcodes'
+        indexes = [
+            models.Index(fields=['email', 'is_used']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    @classmethod
+    def generate_passcode(cls, email):
+        """Generate a new 6-digit passcode for the given email."""
+        # Invalidate any existing passcodes for this email
+        cls.objects.filter(email=email, is_used=False).update(is_used=True)
+
+        # Generate new 6-digit passcode
+        passcode = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+
+        # Create passcode with 15-minute expiry
+        expires_at = timezone.now() + timedelta(minutes=15)
+
+        return cls.objects.create(
+            email=email,
+            passcode=passcode,
+            expires_at=expires_at
+        )
+
+    def is_valid(self):
+        """Check if passcode is still valid (not expired, not used, not too many attempts)."""
+        return (
+            not self.is_used and
+            self.expires_at > timezone.now() and
+            self.attempts < 3
+        )
+
+    def increment_attempts(self):
+        """Increment failed verification attempts."""
+        self.attempts += 1
+        self.save(update_fields=['attempts'])
+
+    def mark_used(self):
+        """Mark passcode as used."""
+        self.is_used = True
+        self.save(update_fields=['is_used'])
+
+    def __str__(self):
+        return f"{self.email} - {self.passcode} (expires: {self.expires_at})"

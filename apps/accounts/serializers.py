@@ -4,7 +4,8 @@ Serializers for user authentication and account management.
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from .models import User, APIKey
+from django.db import IntegrityError, transaction
+from .models import User, APIKey, EmailPasscode
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -29,7 +30,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             username=validated_data['username'],
             display_name=validated_data.get('display_name', ''),
-            password=validated_data['password']
+            password=validated_data['password'],
+            has_permanent_password=True
         )
         return user
 
@@ -99,9 +101,115 @@ class APIKeySerializer(serializers.ModelSerializer):
         if 'key' in validated_data:
             key = validated_data.pop('key')
             instance.set_key(key)
-        
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        
+
         instance.save()
         return instance
+
+
+class PasscodeSendSerializer(serializers.Serializer):
+    """
+    Serializer for sending a temporary passcode to email.
+    """
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        """Validate email format."""
+        return value.lower().strip()
+
+
+class PasscodeVerifySerializer(serializers.Serializer):
+    """
+    Serializer for verifying a passcode and logging in.
+    """
+    email = serializers.EmailField()
+    passcode = serializers.CharField(max_length=6, min_length=6)
+
+    def validate_email(self, value):
+        """Validate email format."""
+        return value.lower().strip()
+
+    def validate_passcode(self, value):
+        """Validate passcode format."""
+        if not value.isdigit():
+            raise serializers.ValidationError('Passcode must contain only digits.')
+        return value
+
+    def validate(self, attrs):
+        """Validate passcode against database."""
+        email = attrs.get('email')
+        passcode = attrs.get('passcode')
+
+        # Find the most recent valid passcode for this email
+        passcode_obj = EmailPasscode.objects.filter(
+            email=email,
+            passcode=passcode,
+            is_used=False
+        ).order_by('-created_at').first()
+
+        if not passcode_obj:
+            raise serializers.ValidationError({
+                'passcode': 'Invalid or expired passcode.'
+            })
+
+        if not passcode_obj.is_valid():
+            passcode_obj.increment_attempts()
+            if passcode_obj.attempts >= 3:
+                raise serializers.ValidationError({
+                    'passcode': 'Too many failed attempts. Please request a new passcode.'
+                })
+            raise serializers.ValidationError({
+                'passcode': 'Passcode has expired. Please request a new one.'
+            })
+
+        # Mark passcode as used
+        passcode_obj.mark_used()
+
+        # Get or create user
+        attempts = 0
+        while True:
+            defaults = {
+                'username': User.generate_unique_username(email),
+                'auth_method': 'temp_passcode',
+                'is_active': True,
+            }
+            try:
+                with transaction.atomic():
+                    user, created = User.objects.get_or_create(
+                        email=email,
+                        defaults=defaults
+                    )
+                break
+            except IntegrityError:
+                attempts += 1
+                if attempts >= 5:
+                    raise serializers.ValidationError('Unable to create account at this time. Please try again.')
+                continue
+
+        if not created and not user.is_active:
+            raise serializers.ValidationError('User account is disabled.')
+
+        # Update auth method if needed
+        if user.auth_method != 'temp_passcode':
+            user.auth_method = 'temp_passcode'
+            user.save(update_fields=['auth_method'])
+
+        attrs['user'] = user
+        return attrs
+
+
+class SetPasswordSerializer(serializers.Serializer):
+    """
+    Serializer for setting a permanent password on an existing account.
+    """
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+    password_confirm = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password_confirm']:
+            raise serializers.ValidationError({
+                'password_confirm': "Passwords don't match"
+            })
+        return attrs
