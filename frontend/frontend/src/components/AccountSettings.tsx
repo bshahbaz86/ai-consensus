@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
-import { X, Lock } from 'lucide-react';
-import { apiService } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { X, Lock, User } from 'lucide-react';
 import './AccountSettings.css';
 
 interface AccountSettingsProps {
   onClose: () => void;
+}
+
+interface UserData {
+  id: number;
+  email: string;
+  username: string;
+  display_name?: string;
 }
 
 const AccountSettings: React.FC<AccountSettingsProps> = ({ onClose }) => {
@@ -14,6 +20,20 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ onClose }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [userData, setUserData] = useState<UserData | null>(null);
+
+  useEffect(() => {
+    // Get user data from localStorage
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setUserData(user);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+  }, []);
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +85,32 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ onClose }) => {
         </div>
 
         <div className="account-settings-content">
+          {/* Account Information Section */}
+          <div className="settings-section">
+            <div className="section-icon">
+              <User size={24} />
+            </div>
+            <h3>Account Information</h3>
+            <p>Your account details</p>
+
+            <div className="account-info-grid">
+              <div className="info-item">
+                <label className="info-label">Name</label>
+                <div className="info-value">
+                  {userData?.display_name || userData?.username || 'Not set'}
+                </div>
+              </div>
+
+              <div className="info-item">
+                <label className="info-label">Email</label>
+                <div className="info-value">
+                  {userData?.email || 'Not available'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Password Section */}
           <div className="settings-section">
             <div className="section-icon">
               <Lock size={24} />
