@@ -239,13 +239,13 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # Cookie settings for cross-origin usage
-# SameSite='None' is required for cross-origin requests (localhost:3000 → localhost:8000)
-# In production with HTTPS, set SECURE cookies to True
-SESSION_COOKIE_SAMESITE = 'None'
+# For development on HTTP localhost, use 'Lax' (works without HTTPS)
+# For production with HTTPS, use 'None' for cross-origin requests
+SESSION_COOKIE_SAMESITE = 'Lax' if DEBUG else 'None'
 SESSION_COOKIE_SECURE = not DEBUG  # True in production with HTTPS, False in development
 SESSION_COOKIE_HTTPONLY = True
 
-CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'Lax' if DEBUG else 'None'
 CSRF_COOKIE_SECURE = not DEBUG  # True in production with HTTPS, False in development
 CSRF_COOKIE_HTTPONLY = False  # Must be False so JavaScript can read it
 

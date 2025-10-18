@@ -196,3 +196,32 @@
   color: #16a34a;
   font-size: 14px;
 }
+
+/* Account Information Styles */
+.account-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.info-value {
+  padding: 12px 16px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+}

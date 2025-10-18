@@ -205,11 +205,13 @@ class UserIsolationTests(TestCase):
         # Create conversations for each user
         self.user1_conversation = Conversation.objects.create(
             user=self.user1,
-            title='User 1 Conversation'
+            title='User 1 Conversation',
+            total_messages=1  # Add at least one message so it appears in list
         )
         self.user2_conversation = Conversation.objects.create(
             user=self.user2,
-            title='User 2 Conversation'
+            title='User 2 Conversation',
+            total_messages=1  # Add at least one message so it appears in list
         )
 
         # Create messages
