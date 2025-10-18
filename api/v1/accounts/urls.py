@@ -22,6 +22,14 @@ urlpatterns = [
     path('auth/google/init/', views.google_oauth_init, name='google-oauth-init'),
     path('auth/google/callback/', views.google_oauth_callback, name='google-oauth-callback'),
 
+    # Email Passcode authentication
+    path('auth/passcode/send/', views.passcode_send, name='passcode-send'),
+    path('auth/passcode/verify/', views.passcode_verify, name='passcode-verify'),
+
+    # Password authentication
+    path('auth/password/login/', views.password_login, name='password-login'),
+    path('auth/password/set/', views.set_password, name='set-password'),
+
     # API key management
     path('api-keys/', views.APIKeyManagementView.as_view(), name='api_keys'),
 

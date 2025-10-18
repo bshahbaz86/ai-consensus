@@ -3,9 +3,12 @@ User account models for ChatAI.
 """
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 from cryptography.fernet import Fernet
 from django.conf import settings
 import base64
+import secrets
+from datetime import timedelta
 
 
 class User(AbstractUser):
@@ -185,11 +188,72 @@ class UserSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-    
+
     class Meta:
         db_table = 'user_sessions'
         verbose_name = 'User Session'
         verbose_name_plural = 'User Sessions'
-    
+
     def __str__(self):
         return f"{self.user.username} - {self.session_key[:10]}..."
+
+
+class EmailPasscode(models.Model):
+    """
+    Temporary passcode for email-based authentication.
+    Passcodes expire after 15 minutes.
+    """
+    email = models.EmailField(db_index=True)
+    passcode = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+    attempts = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'email_passcodes'
+        verbose_name = 'Email Passcode'
+        verbose_name_plural = 'Email Passcodes'
+        indexes = [
+            models.Index(fields=['email', 'is_used']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    @classmethod
+    def generate_passcode(cls, email):
+        """Generate a new 6-digit passcode for the given email."""
+        # Invalidate any existing passcodes for this email
+        cls.objects.filter(email=email, is_used=False).update(is_used=True)
+
+        # Generate new 6-digit passcode
+        passcode = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+
+        # Create passcode with 15-minute expiry
+        expires_at = timezone.now() + timedelta(minutes=15)
+
+        return cls.objects.create(
+            email=email,
+            passcode=passcode,
+            expires_at=expires_at
+        )
+
+    def is_valid(self):
+        """Check if passcode is still valid (not expired, not used, not too many attempts)."""
+        return (
+            not self.is_used and
+            self.expires_at > timezone.now() and
+            self.attempts < 3
+        )
+
+    def increment_attempts(self):
+        """Increment failed verification attempts."""
+        self.attempts += 1
+        self.save(update_fields=['attempts'])
+
+    def mark_used(self):
+        """Mark passcode as used."""
+        self.is_used = True
+        self.save(update_fields=['is_used'])
+
+    def __str__(self):
+        return f"{self.email} - {self.passcode} (expires: {self.expires_at})"

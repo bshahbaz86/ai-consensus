@@ -18,10 +18,14 @@ from apps.accounts.serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserProfileSerializer,
-    APIKeySerializer
+    APIKeySerializer,
+    PasscodeSendSerializer,
+    PasscodeVerifySerializer,
+    SetPasswordSerializer
 )
-from apps.accounts.models import APIKey, UserSession, User
+from apps.accounts.models import APIKey, UserSession, User, EmailPasscode
 import requests
+from django.core.mail import send_mail
 
 
 class RegisterView(APIView):
@@ -357,4 +361,211 @@ def google_oauth_callback(request):
             message="Google authentication failed",
             errors={'detail': str(e)},
             status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# Email Passcode Authentication Views
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def passcode_send(request):
+    """
+    Send a temporary 6-digit passcode to the provided email.
+    The passcode expires in 15 minutes.
+    """
+    serializer = PasscodeSendSerializer(data=request.data)
+    if not serializer.is_valid():
+        return error_response(
+            message="Invalid email",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    email = serializer.validated_data['email']
+
+    try:
+        # Generate passcode
+        passcode_obj = EmailPasscode.generate_passcode(email)
+
+        # Send email
+        subject = 'Your AI Consensus Login Code'
+        message = f'''
+Your temporary login code is: {passcode_obj.passcode}
+
+This code will expire in 15 minutes.
+
+If you didn't request this code, you can safely ignore this email.
+        '''
+
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+
+        return success_response({
+            'email': email,
+            'expires_in_minutes': 15
+        }, message="Passcode sent successfully")
+
+    except Exception as e:
+        return error_response(
+            message="Failed to send passcode",
+            errors={'detail': str(e)},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def passcode_verify(request):
+    """
+    Verify a passcode and log in the user.
+    Creates a new user if the email doesn't exist.
+    """
+    serializer = PasscodeVerifySerializer(data=request.data)
+    if not serializer.is_valid():
+        return error_response(
+            message="Invalid passcode",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    user = serializer.validated_data['user']
+
+    try:
+        # Create or get authentication token
+        token, created = Token.objects.get_or_create(user=user)
+
+        # Create user session
+        if not request.session.session_key:
+            request.session.create()
+
+        UserSession.objects.update_or_create(
+            user=user,
+            session_key=request.session.session_key,
+            defaults={
+                'ip_address': request.META.get('REMOTE_ADDR'),
+                'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+                'is_active': True
+            }
+        )
+
+        # Log the user in
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+        return success_response({
+            'user': UserProfileSerializer(user).data,
+            'token': token.key,
+            'is_new_user': user.date_joined >= timezone.now() - timezone.timedelta(seconds=10),
+            'has_permanent_password': user.has_permanent_password,
+        }, message="Login successful")
+
+    except Exception as e:
+        return error_response(
+            message="Login failed",
+            errors={'detail': str(e)},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# Password Authentication Views
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_password(request):
+    """
+    Set a permanent password for the authenticated user.
+    This allows Google OAuth or passcode users to add password authentication.
+    """
+    serializer = SetPasswordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return error_response(
+            message="Invalid password",
+            errors=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        user = request.user
+        user.set_password(serializer.validated_data['password'])
+        user.has_permanent_password = True
+        user.save(update_fields=['password', 'has_permanent_password'])
+
+        return success_response({
+            'has_permanent_password': True
+        }, message="Password set successfully")
+
+    except Exception as e:
+        return error_response(
+            message="Failed to set password",
+            errors={'detail': str(e)},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([permissions.AllowAny])
+def password_login(request):
+    """
+    Login with email and password.
+    """
+    serializer = UserLoginSerializer(data=request.data)
+    if not serializer.is_valid():
+        return error_response(
+            message="Login failed",
+            errors=serializer.errors,
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
+
+    user = serializer.validated_data['user']
+
+    # Check if user has a password set
+    if not user.has_permanent_password:
+        return error_response(
+            message="Password login not available",
+            errors={'detail': 'This account does not have a password set. Please use Google OAuth or email passcode login.'},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        # Get or create authentication token
+        token, created = Token.objects.get_or_create(user=user)
+
+        # Create user session
+        if not request.session.session_key:
+            request.session.create()
+
+        UserSession.objects.update_or_create(
+            user=user,
+            session_key=request.session.session_key,
+            defaults={
+                'ip_address': request.META.get('REMOTE_ADDR'),
+                'user_agent': request.META.get('HTTP_USER_AGENT', ''),
+                'is_active': True
+            }
+        )
+
+        # Log the user in
+        login(request, user)
+
+        # Update auth method
+        user.auth_method = 'permanent_password'
+        user.last_auth_at = timezone.now()
+        user.save(update_fields=['auth_method', 'last_auth_at'])
+
+        return success_response({
+            'user': UserProfileSerializer(user).data,
+            'token': token.key,
+        }, message="Login successful")
+
+    except Exception as e:
+        return error_response(
+            message="Login failed",
+            errors={'detail': str(e)},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
