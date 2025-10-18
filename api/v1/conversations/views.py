@@ -204,8 +204,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def archive(self, request, pk=None):
         """Archive/unarchive a conversation."""
         conversation = self.get_object()
-        conversation.is_active = not conversation.is_active
-        conversation.save(update_fields=['is_active'])
+        new_archive_state = not conversation.is_archived
+        conversation.is_archived = new_archive_state
+        conversation.is_active = not new_archive_state
+        conversation.save(update_fields=['is_archived', 'is_active'])
 
         serializer = self.get_serializer(conversation)
         return Response(serializer.data)
