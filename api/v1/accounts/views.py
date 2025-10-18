@@ -367,6 +367,7 @@ def google_oauth_callback(request):
 # Email Passcode Authentication Views
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def passcode_send(request):
     """
@@ -475,7 +476,7 @@ def passcode_verify(request):
 # Password Authentication Views
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([permissions.IsAuthenticated])
 def set_password(request):
     """
     Set a permanent password for the authenticated user.

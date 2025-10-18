@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import './LandingPage.css';
+import PasscodeLogin from './PasscodeLogin';
+import PasswordLogin from './PasswordLogin';
+
+type AuthView = 'main' | 'passcode' | 'password';
 
 const LandingPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [currentView, setCurrentView] = useState<AuthView>('main');
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
@@ -30,12 +35,25 @@ const LandingPage: React.FC = () => {
   };
 
   const handleEmailSignIn = () => {
-    alert('Email passcode authentication is coming soon! For now, please use "Continue with Google".');
+    setCurrentView('passcode');
   };
 
   const handlePasswordSignIn = () => {
-    alert('Password authentication is coming soon! For now, please use "Continue with Google".');
+    setCurrentView('password');
   };
+
+  const handleBackToMain = () => {
+    setCurrentView('main');
+  };
+
+  // Show different views based on current state
+  if (currentView === 'passcode') {
+    return <PasscodeLogin onBack={handleBackToMain} />;
+  }
+
+  if (currentView === 'password') {
+    return <PasswordLogin onBack={handleBackToMain} />;
+  }
 
   return (
     <div className="landing-page">
