@@ -222,7 +222,6 @@ class MessageViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['timestamp']
     ordering = ['timestamp']
-    pagination_class = None  # Messages within a conversation are loaded all at once
 
     def get_queryset(self):
         """Return messages for a specific conversation owned by the authenticated user."""
