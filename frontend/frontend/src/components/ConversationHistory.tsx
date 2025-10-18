@@ -205,6 +205,9 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
       setLoading(true);
       setError(null);
 
+      // Ensure token is refreshed from localStorage
+      apiService.refreshToken();
+
       const params: SearchParams = {
         ...searchParams,
         q: debouncedSearchQuery || undefined,

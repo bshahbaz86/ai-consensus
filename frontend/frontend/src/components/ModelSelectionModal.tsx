@@ -188,6 +188,9 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
     <div className="model-selection-overlay" onClick={onClose}>
       <div className="model-selection-modal" onClick={(e) => e.stopPropagation()}>
         <div className="model-selection-header">
+          <div className="header-icon">
+            <Settings size={24} />
+          </div>
           <h2>Select AI Models</h2>
           <button onClick={onClose} className="close-btn">
             <X size={20} />
@@ -202,9 +205,6 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
 
           {/* OpenAI Models */}
           <div className="model-section">
-            <div className="section-icon">
-              <Settings size={24} />
-            </div>
             <h3>OpenAI</h3>
             <p>Select your preferred OpenAI model</p>
 
@@ -229,9 +229,6 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
 
           {/* Claude Models */}
           <div className="model-section">
-            <div className="section-icon">
-              <Settings size={24} />
-            </div>
             <h3>Claude</h3>
             <p>Select your preferred Claude model</p>
 
@@ -256,9 +253,6 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({ isOpen, onClo
 
           {/* Gemini Models */}
           <div className="model-section">
-            <div className="section-icon">
-              <Settings size={24} />
-            </div>
             <h3>Gemini</h3>
             <p>Select your preferred Gemini model</p>
 

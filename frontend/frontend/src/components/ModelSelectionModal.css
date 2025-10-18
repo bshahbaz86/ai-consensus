@@ -25,6 +25,19 @@
   justify-content: space-between;
   padding: 24px 24px 16px;
   border-bottom: 1px solid #e5e7eb;
+  gap: 12px;
+}
+
+.header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
 }
 
 .model-selection-header h2 {
@@ -32,6 +45,7 @@
   font-weight: 700;
   color: #111827;
   margin: 0;
+  flex: 1;
 }
 
 .model-selection-header .close-btn {
@@ -54,37 +68,25 @@
 }
 
 .model-section {
-  margin-bottom: 32px;
-}
-
-.model-section:last-of-type {
   margin-bottom: 24px;
 }
 
-.section-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
+.model-section:last-of-type {
   margin-bottom: 16px;
 }
 
 .model-section h3 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #111827;
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
 }
 
 .model-section p {
-  font-size: 14px;
+  font-size: 13px;
   color: #6b7280;
-  margin: 0 0 16px 0;
-  line-height: 1.5;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
 }
 
 .model-options {
