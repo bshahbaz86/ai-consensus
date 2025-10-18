@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Menu, Globe, Copy, Check, Star, LogOut } from 'lucide-react';
+import { X, Menu, Globe, Copy, Check, Star, LogOut, Settings } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ConversationHistory from './ConversationHistory';
+import AccountSettings from './AccountSettings';
 import { apiService, Conversation, ConversationDetail } from '../services/api';
 
 interface AIResponse {
@@ -73,6 +74,7 @@ const AIConsensusComplete: React.FC = () => {
   // Chat history sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   // Textarea ref for height reset
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1117,7 +1119,15 @@ const AIConsensusComplete: React.FC = () => {
               refreshTrigger={conversationRefreshTrigger}
             />
           </div>
-          <div className="p-4 border-t border-gray-200">
+          <div className="p-4 border-t border-gray-200 space-y-2">
+            <button
+              onClick={() => setShowAccountSettings(true)}
+              className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border-2 bg-white text-gray-700 border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+              title="Account Settings"
+            >
+              <Settings size={16} />
+              Account Settings
+            </button>
             <button
               onClick={handleSignOut}
               className="w-full px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border-2 bg-white text-red-600 border-red-300 hover:border-red-400 hover:bg-red-50"
@@ -1978,6 +1988,11 @@ const AIConsensusComplete: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Account Settings Modal */}
+      {showAccountSettings && (
+        <AccountSettings onClose={() => setShowAccountSettings(false)} />
+      )}
     </div>
   );
 };
