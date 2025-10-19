@@ -43,21 +43,21 @@ services:
       - key: REDIS_URL
         fromSecret: upstash-redis-url
       - key: CLAUDE_API_KEY
-        sync: false
+        fromSecret: claude-api-key
       - key: OPENAI_API_KEY
-        sync: false
+        fromSecret: openai-api-key
       - key: GEMINI_API_KEY
-        sync: false
+        fromSecret: gemini-api-key
       - key: REKA_API_KEY
-        sync: false
+        fromSecret: reka-api-key
       - key: GOOGLE_CSE_API_KEY
-        sync: false
+        fromSecret: google-cse-api-key
       - key: GOOGLE_CSE_CX
-        sync: false
+        fromSecret: google-cse-cx
       - key: GOOGLE_OAUTH_CLIENT_ID
-        sync: false
+        fromSecret: google-oauth-client-id
       - key: GOOGLE_OAUTH_CLIENT_SECRET
-        sync: false
+        fromSecret: google-oauth-client-secret
   - type: worker
     name: ai-consensus-celery-worker
     env: docker
@@ -107,45 +107,21 @@ services:
       - key: REDIS_URL
         fromSecret: upstash-redis-url
       - key: CLAUDE_API_KEY
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: CLAUDE_API_KEY
+        fromSecret: claude-api-key
       - key: OPENAI_API_KEY
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: OPENAI_API_KEY
+        fromSecret: openai-api-key
       - key: GEMINI_API_KEY
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: GEMINI_API_KEY
+        fromSecret: gemini-api-key
       - key: REKA_API_KEY
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: REKA_API_KEY
+        fromSecret: reka-api-key
       - key: GOOGLE_CSE_API_KEY
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: GOOGLE_CSE_API_KEY
+        fromSecret: google-cse-api-key
       - key: GOOGLE_CSE_CX
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: GOOGLE_CSE_CX
+        fromSecret: google-cse-cx
       - key: GOOGLE_OAUTH_CLIENT_ID
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: GOOGLE_OAUTH_CLIENT_ID
+        fromSecret: google-oauth-client-id
       - key: GOOGLE_OAUTH_CLIENT_SECRET
-        fromService:
-          type: web
-          name: ai-consensus-api
-          envVarKey: GOOGLE_OAUTH_CLIENT_SECRET
+        fromSecret: google-oauth-client-secret
   - type: web
     name: ai-consensus-frontend
     env: static
