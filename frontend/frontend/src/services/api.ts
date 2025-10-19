@@ -55,12 +55,17 @@ export interface PaginatedResponse<T> {
   results: T[];
 }
 
+const ENV_API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+const DEFAULT_API_BASE_URL = ENV_API_BASE_URL
+  ? ENV_API_BASE_URL.replace(/\/$/, '')
+  : 'http://localhost:8000';
+
 class ApiService {
   private baseUrl: string;
   private token: string | null = null;
 
-  constructor(baseUrl: string = 'http://localhost:8000') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl: string = DEFAULT_API_BASE_URL) {
+    this.baseUrl = baseUrl.replace(/\/$/, '');
     // Read token from localStorage on initialization
     this.token = localStorage.getItem('auth_token');
   }
