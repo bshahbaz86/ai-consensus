@@ -6,7 +6,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     preDeployCommand: python manage.py migrate
-    startCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application
+    dockerCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -69,7 +69,7 @@ services:
     plan: starter
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    startCommand: celery -A config worker --loglevel=info
+    dockerCommand: celery -A config worker --loglevel=info
     envVars:
       - key: SECRET_KEY
         fromService:
@@ -165,7 +165,7 @@ services:
     plan: starter
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    startCommand: celery -A config beat --loglevel=info
+    dockerCommand: celery -A config beat --loglevel=info
     envVars:
       - key: SECRET_KEY
         fromService:
