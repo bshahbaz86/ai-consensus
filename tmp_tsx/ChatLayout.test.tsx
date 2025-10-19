@@ -52,13 +52,11 @@ jest.mock('./ConversationDetailView', () => {
 // Mock the API service
 jest.mock('../services/api', () => ({
   apiService: {
-    ensureCsrfToken: jest.fn().mockResolvedValue(undefined),
     createConversation: jest.fn(),
   },
 }));
 
 describe('ChatLayout', () => {
-  const mockEnsureCsrfToken = apiService.ensureCsrfToken as jest.Mock;
   const mockCreateConversation = apiService.createConversation as jest.Mock;
 
   beforeEach(() => {
@@ -120,7 +118,6 @@ describe('ChatLayout', () => {
       fireEvent.click(newConversationBtn);
 
       await waitFor(() => {
-        expect(mockEnsureCsrfToken).toHaveBeenCalled();
         expect(mockCreateConversation).toHaveBeenCalledWith({
           title: 'New Chat',
           agent_mode: 'standard',

@@ -99,7 +99,7 @@ class ConversationDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
         fields = [
-            'id', 'title', 'is_active', 'created_at', 'updated_at',
+            'id', 'title', 'is_active', 'is_archived', 'created_at', 'updated_at',
             'agent_mode', 'total_messages', 'total_tokens_used',
             'messages', 'context', 'recent_queries', 'ai_services_used', 'total_cost'
         ]

@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.db.models import Q, Prefetch
+from django.db import connection
 from django.shortcuts import get_object_or_404
 import uuid
 
@@ -37,8 +38,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         # Optimize queries based on action
         if self.action == 'list':
-            # For list view, prefetch related data for performance
-            queryset = queryset.prefetch_related(
+            # For list view, only show conversations with messages and prefetch related data
+            queryset = queryset.filter(total_messages__gt=0).prefetch_related(
                 Prefetch('messages', queryset=Message.objects.select_related().order_by('-timestamp'))
             ).select_related('user')
         elif self.action == 'retrieve':
@@ -95,10 +96,16 @@ class ConversationViewSet(viewsets.ModelViewSet):
         # Apply search query
         search_query = serializer.validated_data.get('q')
         if search_query:
-            queryset = queryset.annotate(
-                search=SearchVector('title', 'messages__content'),
-                rank=SearchRank(SearchVector('title', 'messages__content'), SearchQuery(search_query))
-            ).filter(search=SearchQuery(search_query)).order_by('-rank', '-updated_at')
+            if connection.vendor == 'postgresql':
+                queryset = queryset.annotate(
+                    search=SearchVector('title', 'messages__content'),
+                    rank=SearchRank(SearchVector('title', 'messages__content'), SearchQuery(search_query))
+                ).filter(search=SearchQuery(search_query)).order_by('-rank', '-updated_at')
+            else:
+                queryset = queryset.filter(
+                    Q(title__icontains=search_query) |
+                    Q(messages__content__icontains=search_query)
+                ).distinct().order_by('-updated_at')
 
         # Apply filters
         date_from = serializer.validated_data.get('date_from')
@@ -119,7 +126,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         archived = serializer.validated_data.get('archived')
         if archived is not None:
-            queryset = queryset.filter(is_active=not archived)
+            queryset = queryset.filter(is_archived=archived)
 
         # Apply ordering
         ordering = serializer.validated_data.get('ordering', '-updated_at')
@@ -197,8 +204,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def archive(self, request, pk=None):
         """Archive/unarchive a conversation."""
         conversation = self.get_object()
-        conversation.is_active = not conversation.is_active
-        conversation.save(update_fields=['is_active'])
+        new_archive_state = not conversation.is_archived
+        conversation.is_archived = new_archive_state
+        conversation.is_active = not new_archive_state
+        conversation.save(update_fields=['is_archived', 'is_active'])
 
         serializer = self.get_serializer(conversation)
         return Response(serializer.data)

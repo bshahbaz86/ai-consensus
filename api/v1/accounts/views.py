@@ -265,6 +265,7 @@ def google_oauth_callback(request):
     """
     code = request.data.get('code')
     state = request.data.get('state')
+
     if not code:
         return error_response(
             message="Authorization code required",

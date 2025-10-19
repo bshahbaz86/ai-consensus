@@ -38,7 +38,6 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ children, className = '' }) => 
 
   const handleNewConversation = async () => {
     try {
-      await apiService.ensureCsrfToken();
       const newConversation = await apiService.createConversation({
         title: 'New Chat',
         agent_mode: 'standard',

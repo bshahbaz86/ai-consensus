@@ -1,3 +1,1 @@
-"""
-Core application package for ChatAI Django apps.
-"""
+"""Core Django app package for ChatAI."""
