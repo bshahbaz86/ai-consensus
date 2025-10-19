@@ -38,7 +38,6 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ children, className = '' }) => 
 
   const handleNewConversation = async () => {
     try {
-      await apiService.ensureCsrfToken();
       const newConversation = await apiService.createConversation({
         title: 'New Chat',
         agent_mode: 'standard',
@@ -111,7 +110,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ children, className = '' }) => 
             </button>
 
             <h1 className="text-lg font-semibold text-gray-900">
-              {selectedConversation?.title || 'AI Consensus Chat'}
+              {selectedConversation?.title || 'AIX Chat'}
             </h1>
 
             <div className="w-10"></div> {/* Spacer for center alignment */}
@@ -129,7 +128,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ children, className = '' }) => 
             </button>
 
             <h1 className="text-lg font-semibold text-gray-900">
-              {selectedConversation?.title || 'AI Consensus Chat'}
+              {selectedConversation?.title || 'AIX Chat'}
             </h1>
           </div>
         )}
@@ -147,7 +146,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ children, className = '' }) => 
             <div className="h-full flex flex-col items-center justify-center text-center p-8">
               <div className="max-w-md">
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                  Welcome to AI Consensus Chat
+                  Welcome to AIX Chat
                 </h2>
                 <p className="text-gray-600 mb-6">
                   Select a conversation from the sidebar to continue chatting, or start a new

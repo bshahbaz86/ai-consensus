@@ -1,0 +1,275 @@
+services:
+  - type: web
+    name: ai-consensus-api
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    preDeployCommand: python manage.py migrate
+    startCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ENABLE_TEST_AI_ENDPOINTS
+        value: "False"
+      - key: USE_SQLITE
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: .onrender.com
+      - key: DB_NAME
+        fromDatabase:
+          name: ai-consensus-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: ai-consensus-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: ai-consensus-db
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: ai-consensus-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: ai-consensus-db
+          property: port
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ai-consensus-redis
+          property: connectionString
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: REKA_API_KEY
+        sync: false
+      - key: GOOGLE_CSE_API_KEY
+        sync: false
+      - key: GOOGLE_CSE_CX
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REFRESH_TOKEN
+        sync: false
+  - type: worker
+    name: ai-consensus-celery-worker
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    startCommand: celery -A config worker --loglevel=info
+    envVars:
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: SECRET_KEY
+      - key: ENCRYPTION_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: ENCRYPTION_KEY
+      - key: DEBUG
+        value: "False"
+      - key: ENABLE_TEST_AI_ENDPOINTS
+        value: "False"
+      - key: USE_SQLITE
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: .onrender.com
+      - key: DB_NAME
+        fromDatabase:
+          name: ai-consensus-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: ai-consensus-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: ai-consensus-db
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: ai-consensus-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: ai-consensus-db
+          property: port
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ai-consensus-redis
+          property: connectionString
+      - key: CLAUDE_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: CLAUDE_API_KEY
+      - key: OPENAI_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GEMINI_API_KEY
+      - key: REKA_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: REKA_API_KEY
+      - key: GOOGLE_CSE_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_CSE_API_KEY
+      - key: GOOGLE_CSE_CX
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_CSE_CX
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_OAUTH_CLIENT_ID
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_OAUTH_CLIENT_SECRET
+      - key: GOOGLE_OAUTH_REFRESH_TOKEN
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_OAUTH_REFRESH_TOKEN
+  - type: worker
+    name: ai-consensus-celery-beat
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    startCommand: celery -A config beat --loglevel=info
+    envVars:
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: SECRET_KEY
+      - key: ENCRYPTION_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: ENCRYPTION_KEY
+      - key: DEBUG
+        value: "False"
+      - key: ENABLE_TEST_AI_ENDPOINTS
+        value: "False"
+      - key: USE_SQLITE
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: .onrender.com
+      - key: DB_NAME
+        fromDatabase:
+          name: ai-consensus-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: ai-consensus-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: ai-consensus-db
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: ai-consensus-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: ai-consensus-db
+          property: port
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ai-consensus-redis
+          property: connectionString
+      - key: CLAUDE_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: CLAUDE_API_KEY
+      - key: OPENAI_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GEMINI_API_KEY
+      - key: REKA_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: REKA_API_KEY
+      - key: GOOGLE_CSE_API_KEY
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_CSE_API_KEY
+      - key: GOOGLE_CSE_CX
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_CSE_CX
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_OAUTH_CLIENT_ID
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_OAUTH_CLIENT_SECRET
+      - key: GOOGLE_OAUTH_REFRESH_TOKEN
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: GOOGLE_OAUTH_REFRESH_TOKEN
+  - type: static
+    name: ai-consensus-frontend
+    env: static
+    buildCommand: npm install --prefix frontend/frontend && npm run build --prefix frontend/frontend
+    publishPath: frontend/frontend/build
+    envVars:
+      - key: REACT_APP_API_BASE_URL
+        sync: false
+      - key: REACT_APP_WS_BASE_URL
+        sync: false
+  - type: redis
+    name: ai-consensus-redis
+    plan: starter
+    ipAllowList: []
+databases:
+  - name: ai-consensus-db
+    databaseName: chatai_db
+    plan: starter
