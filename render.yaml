@@ -259,10 +259,11 @@ services:
     name: ai-consensus-redis
     plan: starter
     ipAllowList: []
-staticSites:
-  - name: ai-consensus-frontend
+  - type: web
+    name: ai-consensus-frontend
+    env: static
     buildCommand: npm install --prefix frontend/frontend && npm run build --prefix frontend/frontend
-    publishPath: frontend/frontend/build
+    staticPublishPath: frontend/frontend/build
     envVars:
       - key: REACT_APP_API_BASE_URL
         sync: false
