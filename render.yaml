@@ -272,4 +272,4 @@ services:
 databases:
   - name: ai-consensus-db
     databaseName: chatai_db
-    plan: standard
+    plan: free
