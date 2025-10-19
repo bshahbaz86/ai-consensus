@@ -255,9 +255,8 @@ services:
           type: web
           name: ai-consensus-api
           envVarKey: GOOGLE_OAUTH_REFRESH_TOKEN
-  - type: static
+  - type: static_site
     name: ai-consensus-frontend
-    env: static
     buildCommand: npm install --prefix frontend/frontend && npm run build --prefix frontend/frontend
     publishPath: frontend/frontend/build
     envVars:
