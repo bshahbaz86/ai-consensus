@@ -41,7 +41,7 @@ services:
           name: ai-consensus-db
           property: port
       - key: REDIS_URL
-        fromSecret: upstash-redis-url
+        value: YOUR_REDIS_URL
       - key: CLAUDE_API_KEY
         value: YOUR_CLAUDE_API_KEY
       - key: OPENAI_API_KEY
@@ -105,7 +105,10 @@ services:
           name: ai-consensus-db
           property: port
       - key: REDIS_URL
-        fromSecret: upstash-redis-url
+        fromService:
+          type: web
+          name: ai-consensus-api
+          envVarKey: REDIS_URL
       - key: CLAUDE_API_KEY
         fromService:
           type: web
