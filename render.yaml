@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: ai-consensus-api
+    name: aix-api
     env: docker
     plan: starter
     dockerfilePath: ./Dockerfile
@@ -22,23 +22,23 @@ services:
         value: .onrender.com
       - key: DB_NAME
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: database
       - key: DB_USER
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: user
       - key: DB_PASSWORD
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: password
       - key: DB_HOST
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: host
       - key: DB_PORT
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: port
       - key: REDIS_URL
         value: YOUR_REDIS_URL
@@ -59,7 +59,7 @@ services:
       - key: GOOGLE_OAUTH_CLIENT_SECRET
         value: YOUR_GOOGLE_OAUTH_CLIENT_SECRET
   - type: worker
-    name: ai-consensus-celery-worker
+    name: aix-celery-worker
     env: docker
     plan: starter
     dockerfilePath: ./Dockerfile
@@ -69,12 +69,12 @@ services:
       - key: SECRET_KEY
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: SECRET_KEY
       - key: ENCRYPTION_KEY
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: ENCRYPTION_KEY
       - key: DEBUG
         value: "False"
@@ -86,80 +86,80 @@ services:
         value: .onrender.com
       - key: DB_NAME
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: database
       - key: DB_USER
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: user
       - key: DB_PASSWORD
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: password
       - key: DB_HOST
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: host
       - key: DB_PORT
         fromDatabase:
-          name: ai-consensus-db
+          name: aix-db
           property: port
       - key: REDIS_URL
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: REDIS_URL
       - key: CLAUDE_API_KEY
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: CLAUDE_API_KEY
       - key: OPENAI_API_KEY
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: OPENAI_API_KEY
       - key: GEMINI_API_KEY
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: GEMINI_API_KEY
       - key: REKA_API_KEY
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: REKA_API_KEY
       - key: GOOGLE_CSE_API_KEY
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: GOOGLE_CSE_API_KEY
       - key: GOOGLE_CSE_CX
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: GOOGLE_CSE_CX
       - key: GOOGLE_OAUTH_CLIENT_ID
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: GOOGLE_OAUTH_CLIENT_ID
       - key: GOOGLE_OAUTH_CLIENT_SECRET
         fromService:
           type: web
-          name: ai-consensus-api
+          name: aix-api
           envVarKey: GOOGLE_OAUTH_CLIENT_SECRET
   - type: web
-    name: ai-consensus-frontend
+    name: aix-frontend
     env: static
     buildCommand: npm install --prefix frontend/frontend && npm run build --prefix frontend/frontend
     staticPublishPath: frontend/frontend/build
     envVars:
       - key: REACT_APP_API_BASE_URL
-        value: https://ai-consensus-api.onrender.com
+        value: https://aix-api.onrender.com
       - key: REACT_APP_WS_BASE_URL
-        value: wss://ai-consensus-api.onrender.com
+        value: wss://aix-api.onrender.com
 databases:
-  - name: ai-consensus-db
+  - name: aix-db
     databaseName: chatai_db
     plan: free
