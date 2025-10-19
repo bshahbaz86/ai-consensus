@@ -52,13 +52,11 @@ jest.mock('./ConversationDetailView', () => {
 // Mock the API service
 jest.mock('../services/api', () => ({
   apiService: {
-    ensureCsrfToken: jest.fn().mockResolvedValue(undefined),
     createConversation: jest.fn(),
   },
 }));
 
 describe('ChatLayout', () => {
-  const mockEnsureCsrfToken = apiService.ensureCsrfToken as jest.Mock;
   const mockCreateConversation = apiService.createConversation as jest.Mock;
 
   beforeEach(() => {
@@ -76,7 +74,7 @@ describe('ChatLayout', () => {
 
     test('renders welcome screen when no conversation is selected', () => {
       render(<ChatLayout />);
-      expect(screen.getByText('Welcome to AI Consensus Chat')).toBeInTheDocument();
+      expect(screen.getByText('Welcome to AIX Chat')).toBeInTheDocument();
       expect(screen.getByText(/select a conversation from the sidebar/i)).toBeInTheDocument();
     });
 
@@ -120,7 +118,6 @@ describe('ChatLayout', () => {
       fireEvent.click(newConversationBtn);
 
       await waitFor(() => {
-        expect(mockEnsureCsrfToken).toHaveBeenCalled();
         expect(mockCreateConversation).toHaveBeenCalledWith({
           title: 'New Chat',
           agent_mode: 'standard',
@@ -155,7 +152,7 @@ describe('ChatLayout', () => {
       const backBtn = screen.getByTestId('back-button');
       fireEvent.click(backBtn);
 
-      expect(screen.getByText('Welcome to AI Consensus Chat')).toBeInTheDocument();
+      expect(screen.getByText('Welcome to AIX Chat')).toBeInTheDocument();
     });
 
     test('handles conversation creation error gracefully', async () => {
@@ -221,7 +218,7 @@ describe('ChatLayout', () => {
 
       // Check that sidebar and main content are both present
       expect(screen.getByTestId('conversation-history')).toBeInTheDocument();
-      expect(screen.getByText('Welcome to AI Consensus Chat')).toBeInTheDocument();
+      expect(screen.getByText('Welcome to AIX Chat')).toBeInTheDocument();
     });
   });
 
