@@ -267,6 +267,68 @@ describe('AIConsensusComplete', () => {
         expect(textarea).toBeInTheDocument();
       });
     });
+
+    test('prefer button removes other responses from the current exchange', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            success: true,
+            results: [
+              {
+                service: 'Claude',
+                success: true,
+                content: 'Full answer from Claude',
+                synopsis: 'Claude synopsis content',
+              },
+              {
+                service: 'Gemini',
+                success: true,
+                content: 'Full answer from Gemini',
+                synopsis: 'Gemini synopsis content',
+              },
+            ],
+            web_search_sources: [],
+          }),
+        })
+        .mockResolvedValue({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
+
+      render(<AIConsensusComplete />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/ask a question/i)).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(/ask a question/i) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: 'How does preference pruning work?' } });
+
+      const sendButton = screen.getByRole('button', { name: 'Send' });
+      fireEvent.click(sendButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('Claude synopsis content')).toBeInTheDocument();
+        expect(screen.getByText('Gemini synopsis content')).toBeInTheDocument();
+      });
+
+      // Ensure the current user query only appears once in the transcript
+      expect(screen.getAllByText('How does preference pruning work?').length).toBe(1);
+
+      const preferButtons = screen.getAllByText('Prefer');
+      fireEvent.click(preferButtons[1]);
+
+      await waitFor(() => {
+        expect(screen.queryByText('Claude synopsis content')).not.toBeInTheDocument();
+        expect(screen.getByText('Gemini synopsis content')).toBeInTheDocument();
+        expect(screen.getAllByText('Preferred').length).toBe(1);
+      });
+    });
   });
 
   describe('Web Search Toggle', () => {
