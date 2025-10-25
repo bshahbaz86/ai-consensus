@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 import json
 import asyncio
+import logging
 from apps.ai_services.services.factory import AIServiceFactory
 from apps.ai_services.services.web_search_coordinator import WebSearchCoordinator
 from apps.ai_services.utils.token_extractor import extract_tokens, calculate_total_tokens
@@ -12,14 +13,9 @@ from apps.ai_services.models import AIService, AIQuery
 from apps.responses.models import AIResponse
 from apps.conversations.models import Conversation
 from django.utils import timezone
-from asgiref.sync import sync_to_async
+from channels.db import database_sync_to_async
 
-def _record_web_search_calls(ai_query_id, calls):
-    """Persist deep search usage on the AIQuery without embedding pricing logic."""
-    if not calls:
-        return
-    calls_int = int(calls)
-    AIQuery.objects.filter(id=ai_query_id).update(web_search_calls=calls_int)
+logger = logging.getLogger(__name__)
 
 
 def check_consensus_endpoints_enabled():
@@ -126,10 +122,10 @@ async def process_claude(message: str, chat_history: str, web_search_context: st
         # Create AIResponse records - only if we have valid content
         if ai_query and claude_response['success'] and claude_response['content']:
             try:
-                claude_service_obj = await sync_to_async(AIService.objects.get)(name='claude')
+                claude_service_obj = await database_sync_to_async(AIService.objects.get)(name='claude')
 
                 # Main response record
-                await sync_to_async(AIResponse.objects.create)(
+                await database_sync_to_async(AIResponse.objects.create)(
                     query=ai_query,
                     service=claude_service_obj,
                     content=claude_response['content'],
@@ -147,7 +143,7 @@ async def process_claude(message: str, chat_history: str, web_search_context: st
                         'claude'
                     )
                     synopsis_total_tokens = calculate_total_tokens(synopsis_input_tokens, synopsis_output_tokens)
-                    await sync_to_async(AIResponse.objects.create)(
+                    await database_sync_to_async(AIResponse.objects.create)(
                         query=ai_query,
                         service=claude_service_obj,
                         content=synopsis,
@@ -243,10 +239,10 @@ async def process_openai(message: str, chat_history: str, web_search_context: st
         # Create AIResponse records - only if we have valid content
         if ai_query and openai_response['success'] and openai_response['content']:
             try:
-                openai_service_obj = await sync_to_async(AIService.objects.get)(name='openai')
+                openai_service_obj = await database_sync_to_async(AIService.objects.get)(name='openai')
 
                 # Main response record
-                await sync_to_async(AIResponse.objects.create)(
+                await database_sync_to_async(AIResponse.objects.create)(
                     query=ai_query,
                     service=openai_service_obj,
                     content=openai_response['content'],
@@ -264,7 +260,7 @@ async def process_openai(message: str, chat_history: str, web_search_context: st
                         'openai'
                     )
                     synopsis_total_tokens = calculate_total_tokens(synopsis_input_tokens, synopsis_output_tokens)
-                    await sync_to_async(AIResponse.objects.create)(
+                    await database_sync_to_async(AIResponse.objects.create)(
                         query=ai_query,
                         service=openai_service_obj,
                         content=synopsis,
@@ -360,10 +356,10 @@ async def process_gemini(message: str, chat_history: str, web_search_context: st
         # Create AIResponse records - only if we have valid content
         if ai_query and gemini_response['success'] and gemini_response['content']:
             try:
-                gemini_service_obj = await sync_to_async(AIService.objects.get)(name='gemini')
+                gemini_service_obj = await database_sync_to_async(AIService.objects.get)(name='gemini')
 
                 # Main response record
-                await sync_to_async(AIResponse.objects.create)(
+                await database_sync_to_async(AIResponse.objects.create)(
                     query=ai_query,
                     service=gemini_service_obj,
                     content=gemini_response['content'],
@@ -381,7 +377,7 @@ async def process_gemini(message: str, chat_history: str, web_search_context: st
                         'gemini'
                     )
                     synopsis_total_tokens = calculate_total_tokens(synopsis_input_tokens, synopsis_output_tokens)
-                    await sync_to_async(AIResponse.objects.create)(
+                    await database_sync_to_async(AIResponse.objects.create)(
                         query=ai_query,
                         service=gemini_service_obj,
                         content=synopsis,
@@ -422,30 +418,22 @@ async def process_all_services_async(message: str, services: list, use_web_searc
     """
     Async helper that coordinates parallel LLM calls.
     """
-    # Create AIQuery for cost tracking if a conversation is provided
+    # Get conversation and user first (needed for both web search and AIQuery creation)
     ai_query = None
     user = None
+    conversation = None
     if conversation_id:
         try:
-            conversation = await sync_to_async(Conversation.objects.select_related('user').get)(
+            conversation = await database_sync_to_async(Conversation.objects.select_related('user').get)(
                 id=conversation_id
             )
             user = conversation.user  # Store user for model preferences
-            ai_query = await sync_to_async(AIQuery.objects.create)(
-                user=conversation.user,
-                conversation=conversation,
-                prompt=message,
-                context={'chat_history': chat_history, 'use_web_search': use_web_search},
-                status='processing',
-                services_requested=services
-            )
         except Exception as e:
-            print(f"Failed to create AIQuery: {e}")
+            print(f"Failed to get conversation: {e}")
             import traceback
             traceback.print_exc()
-            pass
 
-    # Perform web search once if needed
+    # Perform web search once if needed (BEFORE creating AIQuery)
     web_search_context = ""
     search_result = {}
 
@@ -485,19 +473,52 @@ async def process_all_services_async(message: str, services: list, use_web_searc
             else:
                 print(f"[WEB SEARCH] No valid search results to process")
         except asyncio.TimeoutError:
-            print(f"[WEB SEARCH] Web search timed out after 120 seconds - continuing without search")
+            print(f"[WEB SEARCH] Web search timed out after 200 seconds - continuing without search")
+            search_result = {
+                'success': False,
+                'error': 'Search timed out',
+                'results': [],
+                'sources': [],
+                'search_calls_made': 1  # Count the attempt even if it timed out
+            }
         except Exception as e:
             print(f"[WEB SEARCH] Web search failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            search_result = {
+                'success': False,
+                'error': str(e),
+                'results': [],
+                'sources': [],
+                'search_calls_made': 1  # Count the attempt even if it failed
+            }
+
+    # Create AIQuery for cost tracking AFTER web search (so we can set web_search_calls directly)
+    if conversation and user:
+        try:
+            # Calculate web_search_calls based on whether web search was performed
+            web_search_calls = 0
+            if use_web_search and search_result:
+                web_search_calls = search_result.get('search_calls_made', 1) or 1
+
+            print(f"[AIQuery] Creating AIQuery with web_search_calls={web_search_calls}")
+            ai_query = await database_sync_to_async(AIQuery.objects.create)(
+                user=user,
+                conversation=conversation,
+                prompt=message,
+                context={'chat_history': chat_history, 'use_web_search': use_web_search},
+                status='processing',
+                services_requested=services,
+                web_search_calls=web_search_calls
+            )
+            print(f"[AIQuery] Created AIQuery {ai_query.id} with web_search_calls={web_search_calls}")
+        except Exception as e:
+            print(f"Failed to create AIQuery: {e}")
             import traceback
             traceback.print_exc()
 
     # Build list of coroutines for requested services
     tasks = []
-
-    if ai_query and search_result:
-        search_calls = search_result.get('search_calls_made', 0) or 0
-        if search_calls:
-            await sync_to_async(_record_web_search_calls)(ai_query.id, search_calls)
 
     if 'claude' in services and settings.CLAUDE_API_KEY:
         tasks.append(process_claude(message, chat_history, web_search_context, search_result, use_web_search, ai_query, user))
@@ -532,11 +553,11 @@ async def process_all_services_async(message: str, services: list, use_web_searc
             ai_query.status = 'completed'
             ai_query.completed_at = timezone.now()
             ai_query.total_responses = len(processed_results)
-            await sync_to_async(ai_query.save)()
+            await database_sync_to_async(ai_query.save)()
 
             # Update conversation stats to recalculate costs
             if ai_query.conversation:
-                await sync_to_async(ai_query.conversation.update_conversation_metadata)()
+                await database_sync_to_async(ai_query.conversation.update_conversation_metadata)()
         except Exception as e:
             print(f"Failed to update AIQuery: {e}")
 

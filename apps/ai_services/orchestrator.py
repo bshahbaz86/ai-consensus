@@ -47,7 +47,12 @@ class MultiAgentOrchestrator:
                     context=query_context,
                     status='pending'
                 )
-                
+
+                # Update web_search_calls if web search was performed
+                if query_context.get('web_search', {}).get('search_calls_made'):
+                    ai_query.web_search_calls = query_context['web_search']['search_calls_made']
+                    ai_query.save(update_fields=['web_search_calls'])
+
                 services_to_use = self._select_services(selected_services)
                 
                 service_tasks = []
