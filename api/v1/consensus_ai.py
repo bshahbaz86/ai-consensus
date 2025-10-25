@@ -14,6 +14,13 @@ from apps.conversations.models import Conversation
 from django.utils import timezone
 from asgiref.sync import sync_to_async
 
+def _record_web_search_calls(ai_query_id, calls):
+    """Persist deep search usage on the AIQuery without embedding pricing logic."""
+    if not calls:
+        return
+    calls_int = int(calls)
+    AIQuery.objects.filter(id=ai_query_id).update(web_search_calls=calls_int)
+
 
 def check_consensus_endpoints_enabled():
     """
@@ -486,6 +493,11 @@ async def process_all_services_async(message: str, services: list, use_web_searc
 
     # Build list of coroutines for requested services
     tasks = []
+
+    if ai_query and search_result:
+        search_calls = search_result.get('search_calls_made', 0) or 0
+        if search_calls:
+            await sync_to_async(_record_web_search_calls)(ai_query.id, search_calls)
 
     if 'claude' in services and settings.CLAUDE_API_KEY:
         tasks.append(process_claude(message, chat_history, web_search_context, search_result, use_web_search, ai_query, user))
