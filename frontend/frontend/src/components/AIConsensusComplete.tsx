@@ -22,6 +22,22 @@ interface WebSearchSource {
   snippet?: string;
 }
 
+interface ConversationHistoryEntry {
+  role: string;
+  content: string;
+}
+
+type ConversationExchangeRecord = {
+  question: string;
+  responses: AIResponse[];
+  webSearchSources: WebSearchSource[];
+  critiqueResult?: string;
+  critiqueProvider?: string;
+  synthesisResult?: string;
+  synthesisProvider?: string;
+  questionHistoryIndex?: number;
+};
+
 // Helper function to get CSRF token from cookies
 const getCsrfToken = (): string | null => {
   const name = 'csrftoken';
@@ -56,6 +72,43 @@ const getAuthHeaders = (): Record<string, string> => {
   return headers;
 };
 
+const buildResponseKey = (service: string, content?: string) =>
+  `${service}:::${content ?? ''}`;
+
+const findLastUserMessageIndex = (history: Array<{ role: string; content: string }>): number => {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === 'user') {
+      return i;
+    }
+  }
+  return -1;
+};
+
+const exchangeHasResponses = (
+  exchange: ConversationExchangeRecord | null
+): exchange is ConversationExchangeRecord => {
+  return !!exchange && Array.isArray(exchange.responses) && exchange.responses.length > 0;
+};
+
+const buildReflectionPreview = (content?: string, synopsis?: string): { text: string; truncated: boolean } => {
+  const cleanedSynopsis = synopsis?.trim();
+  if (cleanedSynopsis && (!content || cleanedSynopsis.length < content.length)) {
+    return { text: cleanedSynopsis, truncated: false };
+  }
+
+  if (!content) {
+    return { text: '', truncated: false };
+  }
+
+  const MAX_PREVIEW_CHARS = 280;
+  if (content.length <= MAX_PREVIEW_CHARS) {
+    return { text: content, truncated: false };
+  }
+
+  const preview = content.slice(0, MAX_PREVIEW_CHARS).trimEnd();
+  return { text: `${preview}…`, truncated: true };
+};
+
 const AIConsensusComplete: React.FC = () => {
   const [question, setQuestion] = useState('');
   const [responses, setResponses] = useState<AIResponse[]>([]);
@@ -87,19 +140,11 @@ const AIConsensusComplete: React.FC = () => {
   // Conversation tracking for chat history
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [currentConversation, setCurrentConversation] = useState<ConversationDetail | null>(null);
-  const [conversationHistory, setConversationHistory] = useState<Array<{role: string, content: string}>>([]);
+  const [conversationHistory, setConversationHistory] = useState<ConversationHistoryEntry[]>([]);
   const [conversationRefreshTrigger, setConversationRefreshTrigger] = useState(0);
 
   // Keep track of all conversation exchanges (question + responses + analysis results)
-  const [conversationExchanges, setConversationExchanges] = useState<Array<{
-    question: string;
-    responses: AIResponse[];
-    webSearchSources: WebSearchSource[];
-    critiqueResult?: string;
-    critiqueProvider?: string;
-    synthesisResult?: string;
-    synthesisProvider?: string;
-  }>>([]);
+  const [conversationExchanges, setConversationExchanges] = useState<ConversationExchangeRecord[]>([]);
 
   // Track expanded states for previous exchanges (collapsed by default)
   const [previousExchangesExpanded, setPreviousExchangesExpanded] = useState<{[key: string]: Set<number>}>({});
@@ -187,40 +232,25 @@ const AIConsensusComplete: React.FC = () => {
         setConversationHistory(history);
 
         // Reconstruct conversationExchanges from messages
-        const exchanges: Array<{
-          question: string;
-          responses: AIResponse[];
-          webSearchSources: WebSearchSource[];
-          critiqueResult?: string;
-          critiqueProvider?: string;
-          synthesisResult?: string;
-          synthesisProvider?: string;
-        }> = [];
+        const exchanges: ConversationExchangeRecord[] = [];
 
-        let currentExchange: {
-          question: string;
-          responses: AIResponse[];
-          webSearchSources: WebSearchSource[];
-        } | null = null;
+        let currentExchange: ConversationExchangeRecord | null = null;
 
-        for (const msg of fullConversation.messages) {
+        fullConversation.messages.forEach((msg, index) => {
           if (msg.role === 'user') {
-            // Save previous exchange if it has responses
-            if (currentExchange && currentExchange.responses.length > 0) {
+            if (exchangeHasResponses(currentExchange)) {
               exchanges.push(currentExchange);
             }
-            // Start a new exchange
             currentExchange = {
               question: msg.content,
-              responses: [],
-              webSearchSources: []
+              responses: [] as AIResponse[],
+              webSearchSources: [] as WebSearchSource[],
+              questionHistoryIndex: index
             };
           } else if (msg.role === 'assistant' && currentExchange) {
-            // Add assistant response to the current exchange
             const metadata = msg.metadata || {};
             const service = metadata.service || 'Unknown';
 
-            // Check if this service response already exists to avoid duplicates
             const existingResponse = currentExchange.responses.find(r => r.service === service);
             if (!existingResponse) {
               currentExchange.responses.push({
@@ -230,16 +260,14 @@ const AIConsensusComplete: React.FC = () => {
                 synopsis: metadata.synopsis || ''
               });
 
-              // Extract web search sources if available
               if (metadata.web_search_sources && metadata.web_search_sources.length > 0) {
                 currentExchange.webSearchSources = metadata.web_search_sources;
               }
             }
           }
-        }
+        });
 
-        // Add the final exchange if it has responses
-        if (currentExchange && currentExchange.responses.length > 0) {
+        if (exchangeHasResponses(currentExchange)) {
           exchanges.push(currentExchange);
         }
 
@@ -346,6 +374,83 @@ const AIConsensusComplete: React.FC = () => {
       console.error('Failed to save message:', error);
       return false;
     }
+  };
+
+  const pruneConversationHistoryForExchange = (
+    exchangeIndex: number,
+    preferredResponse: AIResponse,
+    responsesForExchange: AIResponse[]
+  ) => {
+    if (!preferredResponse?.success) {
+      return;
+    }
+
+    const successfulResponses = responsesForExchange
+      .map((resp, idx) => ({ resp, idx }))
+      .filter(item => item.resp.success);
+
+    if (successfulResponses.length <= 1) {
+      return;
+    }
+
+    const preferredKey = buildResponseKey(preferredResponse.service, preferredResponse.content);
+    const removalKeys = new Set(
+      successfulResponses
+        .filter(item => buildResponseKey(item.resp.service, item.resp.content) !== preferredKey)
+        .map(item => buildResponseKey(item.resp.service, item.resp.content))
+    );
+
+    setConversationHistory(prevHistory => {
+      if (prevHistory.length === 0) {
+        return prevHistory;
+      }
+
+      let userCount = -1;
+      let questionIdx = -1;
+      let nextUserIdx = prevHistory.length;
+
+      for (let i = 0; i < prevHistory.length; i++) {
+        if (prevHistory[i].role === 'user') {
+          userCount += 1;
+          if (userCount === exchangeIndex) {
+            questionIdx = i;
+          } else if (userCount === exchangeIndex + 1) {
+            nextUserIdx = i;
+            break;
+          }
+        }
+      }
+
+      if (questionIdx === -1) {
+        return prevHistory;
+      }
+
+      const prefix = prevHistory.slice(0, questionIdx + 1);
+      const segment = prevHistory.slice(questionIdx + 1, nextUserIdx);
+      const suffix = prevHistory.slice(nextUserIdx);
+
+      let preferredIncluded = false;
+      const updatedSegment = segment.filter(entry => {
+        const entryKey = buildResponseKey(entry.role, entry.content);
+        if (entryKey === preferredKey && !preferredIncluded) {
+          preferredIncluded = true;
+          return true;
+        }
+        if (removalKeys.has(entryKey)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (!preferredIncluded && preferredResponse.content) {
+        updatedSegment.unshift({
+          role: preferredResponse.service,
+          content: preferredResponse.content
+        });
+      }
+
+      return [...prefix, ...updatedSegment, ...suffix];
+    });
   };
 
   // Helper function to update conversation title based on first message
@@ -462,13 +567,15 @@ const AIConsensusComplete: React.FC = () => {
     if (responses?.length > 0 && conversationHistory?.length > 0) {
       // Find the last user message in the conversation history
       const lastUserMessage = conversationHistory?.filter(msg => msg.role === 'user').slice(-1)[0];
+      const lastUserIndex = findLastUserMessageIndex(conversationHistory);
       const newExchangeIndex = conversationExchanges?.length || 0;
 
       // Archive the responses along with any analysis results
       setConversationExchanges(prev => [...prev, {
         question: lastUserMessage?.content || 'Previous question',
-        responses: responses,
-        webSearchSources: webSearchSources,
+        questionHistoryIndex: lastUserIndex >= 0 ? lastUserIndex : undefined,
+        responses: responses.map(resp => ({ ...resp })),
+        webSearchSources: webSearchSources.map(source => ({ ...source })),
         critiqueResult: critiqueResult || undefined,
         critiqueProvider: critiqueProvider || undefined,
         synthesisResult: synthesisResult || undefined,
@@ -568,7 +675,8 @@ const AIConsensusComplete: React.FC = () => {
 
       if (data.success) {
         console.log('[FRONTEND] Received web_search_sources:', data.web_search_sources);
-        setResponses(data.results);
+        const nextResults = Array.isArray(data.results) ? data.results : [];
+        setResponses(nextResults);
         setWebSearchSources(data.web_search_sources || []);
 
         // Save AI responses to database and add to conversation history
@@ -967,16 +1075,41 @@ const AIConsensusComplete: React.FC = () => {
   };
 
 
-  const togglePreference = (index: number) => {
-    setPreferredResponses(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-      } else {
-        newSet.add(index);
+  const handlePreferResponse = (index: number) => {
+    if (!responses || responses.length === 0) {
+      return;
+    }
+
+    const selectedResponse = responses[index];
+    if (!selectedResponse?.success) {
+      return;
+    }
+
+    pruneConversationHistoryForExchange(
+      conversationExchanges.length,
+      selectedResponse,
+      responses
+    );
+
+    const wasExpanded = expandedResponses.has(index);
+
+    setResponses([selectedResponse]);
+    setPreferredResponses(() => new Set([0]));
+    setSelectedForCritique(new Set());
+    setExpandedResponses(() => {
+      const newSet = new Set<number>();
+      if (wasExpanded) {
+        newSet.add(0);
       }
       return newSet;
     });
+    setCritiqueResult(null);
+    setCritiqueProvider(null);
+    setSynthesisResult(null);
+    setSynthesisProvider(null);
+    setCrossReflectionResults([]);
+    setPreferredCrossReflections(new Set());
+    setExpandedCrossReflections(new Set());
   };
 
   // Helper functions for previous exchanges
@@ -1061,19 +1194,67 @@ const AIConsensusComplete: React.FC = () => {
     });
   };
 
-  const togglePreviousPreferred = (exchangeIndex: number, responseIndex: number) => {
-    const key = `${exchangeIndex}`;
-    setPreviousExchangesPreferred(prev => {
-      const newState = { ...prev };
-      if (!newState[key]) newState[key] = new Set();
+  const handlePreviousPreference = (exchangeIndex: number, responseIndex: number) => {
+    const exchange = conversationExchanges[exchangeIndex];
+    if (!exchange) {
+      return;
+    }
 
-      const newSet = new Set(newState[key]);
-      if (newSet.has(responseIndex)) {
-        newSet.delete(responseIndex);
-      } else {
-        newSet.add(responseIndex);
+    const originalResponses = exchange.responses;
+    const selectedResponse = originalResponses[responseIndex];
+    if (!selectedResponse?.success) {
+      return;
+    }
+
+    pruneConversationHistoryForExchange(
+      exchangeIndex,
+      selectedResponse,
+      originalResponses
+    );
+
+    setConversationExchanges(prev => {
+      if (exchangeIndex < 0 || exchangeIndex >= prev.length) {
+        return prev;
       }
-      newState[key] = newSet;
+      const updated = [...prev];
+      const target = prev[exchangeIndex];
+      if (!target) {
+        return prev;
+      }
+      const preferred = target.responses[responseIndex];
+      if (!preferred) {
+        return prev;
+      }
+      updated[exchangeIndex] = {
+        ...target,
+        responses: [preferred],
+      };
+      return updated;
+    });
+
+    const exchangeKey = `${exchangeIndex}`;
+
+    setPreviousExchangesPreferred(prev => ({
+      ...prev,
+      [exchangeKey]: new Set([0]),
+    }));
+
+    setPreviousExchangesExpanded(prev => {
+      const newState = { ...prev };
+      const wasExpanded = newState[exchangeKey]?.has(responseIndex) ?? false;
+      const newSet = new Set<number>();
+      if (wasExpanded) {
+        newSet.add(0);
+      }
+      newState[exchangeKey] = newSet;
+      return newState;
+    });
+
+    setPreviousExchangesSelected(prev => {
+      const newState = { ...prev };
+      if (newState[exchangeKey]) {
+        newState[exchangeKey] = new Set();
+      }
       return newState;
     });
   };
@@ -1089,6 +1270,18 @@ const AIConsensusComplete: React.FC = () => {
       return newSet;
     });
   };
+
+  const latestUserHistoryIndex = findLastUserMessageIndex(conversationHistory);
+  const shouldHideLatestExchange = Array.isArray(responses) && responses.length > 0;
+  const exchangesForDisplay = conversationExchanges
+    .map((exchange, index) => ({ exchange, index }))
+    .filter(({ exchange }) => {
+      if (!shouldHideLatestExchange) {
+        return true;
+      }
+      return latestUserHistoryIndex === -1 ||
+        (exchange.questionHistoryIndex ?? -1) !== latestUserHistoryIndex;
+    });
 
 
   return (
@@ -1202,7 +1395,7 @@ const AIConsensusComplete: React.FC = () => {
 
 
         {/* Previous Conversation Exchanges */}
-        {conversationExchanges.map((exchange, exchangeIndex) => {
+        {exchangesForDisplay.map(({ exchange, index: exchangeIndex }) => {
           const isCollapsed = exchangesCollapsed.has(exchangeIndex);
           const exchangeKey = `${exchangeIndex}`;
           const expandedSet = previousExchangesExpanded[exchangeKey] || new Set();
@@ -1263,7 +1456,7 @@ const AIConsensusComplete: React.FC = () => {
                               {selectedSet.has(responseIndex) ? 'Selected' : 'Select'}
                             </button>
                             <button
-                              onClick={() => togglePreviousPreferred(exchangeIndex, responseIndex)}
+                              onClick={() => handlePreviousPreference(exchangeIndex, responseIndex)}
                               className={`px-3 py-1 text-sm border rounded transition-colors ${
                                 preferredSet.has(responseIndex)
                                   ? 'bg-gray-100 border-gray-400 text-blue-600'
@@ -1460,9 +1653,14 @@ const AIConsensusComplete: React.FC = () => {
                       </div>
                       {previousCrossReflectionExpanded[`${exchangeIndex}`] !== false && (
                         <div className="space-y-4 mt-4">
-                          {previousCrossReflectionResults[`${exchangeIndex}`].map((reflection: AIResponse, reflectionIndex: number) => (
-                            <div key={reflectionIndex} className="bg-white border border-green-200 rounded-lg overflow-hidden">
-                              <div className="p-6">
+                          {previousCrossReflectionResults[`${exchangeIndex}`].map((reflection: AIResponse, reflectionIndex: number) => {
+                            const key = `${exchangeIndex}`;
+                            const expandedSet = previousExpandedCrossReflections[key] || new Set<number>();
+                            const isExpanded = expandedSet.has(reflectionIndex);
+                            const preview = buildReflectionPreview(reflection.content, reflection.synopsis);
+                            return (
+                              <div key={reflectionIndex} className="bg-white border border-green-200 rounded-lg overflow-hidden">
+                                <div className="p-6">
                                 <div className="flex items-center justify-between mb-4">
                                   <div className="flex items-center gap-3">
                                     <h3 className="text-lg font-medium text-gray-900">{reflection.service}</h3>
@@ -1473,21 +1671,21 @@ const AIConsensusComplete: React.FC = () => {
                                   <div className="flex items-center gap-2">
                                     <button
                                       onClick={() => {
-                                        const key = `${exchangeIndex}`;
                                         setPreviousExpandedCrossReflections(prev => {
-                                          const currentSet = prev[key] || new Set();
-                                          const newSet = new Set<number>();
-                                          // If clicking the same one that's expanded, collapse it
-                                          if (!currentSet.has(reflectionIndex)) {
+                                          const currentSet = prev[key] || new Set<number>();
+                                          const newSet = new Set<number>(currentSet);
+                                          if (newSet.has(reflectionIndex)) {
+                                            newSet.delete(reflectionIndex);
+                                          } else {
+                                            newSet.clear();
                                             newSet.add(reflectionIndex);
                                           }
-                                          // Otherwise, only expand the clicked one (collapse others)
                                           return {...prev, [key]: newSet};
                                         });
                                       }}
                                       className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
                                     >
-                                      {(previousExpandedCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) ? '-Collapse' : '+Expand'}
+                                      {isExpanded ? '-Collapse' : '+Expand'}
                                     </button>
                                     <button
                                       onClick={() => copyToClipboard(reflection.content || '', `prev-cross-${exchangeIndex}-${reflectionIndex}`)}
@@ -1508,7 +1706,6 @@ const AIConsensusComplete: React.FC = () => {
                                     </button>
                                     <button
                                       onClick={() => {
-                                        const key = `${exchangeIndex}`;
                                         setPreviousPreferredCrossReflections(prev => {
                                           const preferred = new Set(prev[key] || new Set());
                                           if (preferred.has(reflectionIndex)) {
@@ -1520,29 +1717,34 @@ const AIConsensusComplete: React.FC = () => {
                                         });
                                       }}
                                       className={`px-3 py-1 text-sm border rounded transition-colors flex items-center gap-1 ${
-                                        (previousPreferredCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex)
+                                        (previousPreferredCrossReflections[key] || new Set()).has(reflectionIndex)
                                           ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
                                           : 'border-gray-300 hover:bg-gray-100'
                                       }`}
                                       title="Mark as preferred response"
                                     >
-                                      <Star size={14} className={(previousPreferredCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) ? 'fill-yellow-500' : ''} />
+                                      <Star size={14} className={(previousPreferredCrossReflections[key] || new Set()).has(reflectionIndex) ? 'fill-yellow-500' : ''} />
                                       <span>Prefer</span>
                                     </button>
                                   </div>
                                 </div>
-                                {reflection.synopsis && (
-                                  <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                    <p className="text-sm text-gray-700 font-medium"></p>
-                                    <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
-                                  </div>
-                                )}
-                                {(previousExpandedCrossReflections[`${exchangeIndex}`] || new Set()).has(reflectionIndex) && reflection.content && (
-                                  <MarkdownRenderer content={reflection.content} className="text-gray-700" />
-                                )}
+                                <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                  {!isExpanded && preview.text && (
+                                    <>
+                                      <p className="text-sm text-gray-600">{preview.text}</p>
+                                      {preview.truncated && (
+                                        <div className="mt-2 text-gray-500 text-sm italic">Click "+Expand" to read the full reflection…</div>
+                                      )}
+                                    </>
+                                  )}
+                                  {isExpanded && reflection.content && (
+                                    <MarkdownRenderer content={reflection.content} className="text-gray-700" />
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -1606,7 +1808,7 @@ const AIConsensusComplete: React.FC = () => {
                           {selectedForCritique.has(index) ? 'Selected' : 'Select'}
                         </button>
                         <button
-                          onClick={() => togglePreference(index)}
+                          onClick={() => handlePreferResponse(index)}
                           className={`px-3 py-1 text-sm border rounded transition-colors ${
                             preferredResponses.has(index)
                               ? 'bg-gray-100 border-gray-400 text-blue-600'
@@ -1800,9 +2002,12 @@ const AIConsensusComplete: React.FC = () => {
             </div>
             {crossReflectionExpanded && (
               <div className="space-y-4 mt-4">
-                {crossReflectionResults.map((reflection, index) => (
-                  <div key={index} className="bg-white border border-green-200 rounded-lg overflow-hidden">
-                    <div className="p-6">
+                {crossReflectionResults.map((reflection, index) => {
+                  const isExpanded = expandedCrossReflections.has(index);
+                  const preview = buildReflectionPreview(reflection.content, reflection.synopsis);
+                  return (
+                    <div key={index} className="bg-white border border-green-200 rounded-lg overflow-hidden">
+                      <div className="p-6">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-medium text-gray-900">{reflection.service}</h3>
@@ -1825,7 +2030,7 @@ const AIConsensusComplete: React.FC = () => {
                             }}
                             className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 transition-colors"
                           >
-                            {expandedCrossReflections.has(index) ? '-Collapse' : '+Expand'}
+                            {isExpanded ? '-Collapse' : '+Expand'}
                           </button>
                           <button
                             onClick={() => copyToClipboard(reflection.content || '', `cross-reflection-${index}`)}
@@ -1858,18 +2063,21 @@ const AIConsensusComplete: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                      {reflection.synopsis && (
-                        <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                          <p className="text-sm text-gray-700 font-medium"></p>
-                          <p className="text-sm text-gray-600 mt-1">{reflection.synopsis}</p>
+                      {!isExpanded && preview.text && (
+                        <div className="text-gray-700 leading-relaxed">
+                          {preview.text}
+                          {preview.truncated && (
+                            <div className="mt-2 text-gray-500 text-sm italic">Click "+Expand" to read the full reflection…</div>
+                          )}
                         </div>
                       )}
-                      {expandedCrossReflections.has(index) && reflection.content && (
+                      {isExpanded && reflection.content && (
                         <MarkdownRenderer content={reflection.content} className="text-gray-700" />
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

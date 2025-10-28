@@ -79,7 +79,8 @@ class AIQuery(models.Model):
     # Results
     total_responses = models.PositiveIntegerField(default=0)
     preferred_response_id = models.UUIDField(null=True, blank=True)  # AI-selected best response
-    
+    web_search_calls = models.PositiveIntegerField(default=0)
+
     class Meta:
         db_table = 'ai_queries'
         ordering = ['-started_at']

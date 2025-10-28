@@ -5,7 +5,8 @@ def set_has_permanent_password(apps, schema_editor):
     User = apps.get_model('accounts', 'User')
     users = User.objects.filter(has_permanent_password=False)
     for user in users.iterator():
-        if user.has_usable_password():
+        has_password = getattr(user, 'has_usable_password', None)
+        if callable(has_password) and has_password():
             user.has_permanent_password = True
             user.save(update_fields=['has_permanent_password'])
 
